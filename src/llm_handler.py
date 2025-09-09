@@ -131,8 +131,25 @@ class LLMHandler:
                 return self._create_fallback_result(text)
 
         except Exception as e:
-            logger.error(f"Error calling Mistral API: {e}")
-            return self._create_fallback_result(text)
+            error_message = str(e).lower()
+            if (
+                "429" in error_message
+                or "too many requests" in error_message
+                or "rate limit" in error_message
+            ):
+                logger.warning("Mistral API rate limit exceeded, using fallback")
+                # Return special result for rate limit
+                return {
+                    "action": "rate_limit",
+                    "video_url": None,
+                    "start_time": None,
+                    "end_time": None,
+                    "use_last_video": False,
+                    "confidence": 0.0,
+                }
+            else:
+                logger.error(f"Error calling Mistral API: {e}")
+                return self._create_fallback_result(text)
 
     def _validate_result(self, result: Dict[str, Any]) -> bool:
         """

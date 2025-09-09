@@ -21,8 +21,8 @@ from llm_handler import LLMHandler
 logger = logging.getLogger(__name__)
 
 # Global instances
-video_processor = VideoProcessor()
 llm_handler = LLMHandler(MISTRAL_API_KEY) if MISTRAL_API_KEY else None
+video_processor = VideoProcessor(llm_handler)
 
 
 @dataclass
@@ -224,6 +224,15 @@ async def handle_llm_request(message: types.Message, text: str) -> None:
     """Handle request using LLM analysis."""
     user = message.from_user
 
+    # Check if it's a simple video URL without additional commands
+    if is_video_url(text) and not contains_trim_request(text):
+        # Simple URL - skip LLM analysis for faster processing
+        video_url = extract_video_url(text)
+        if video_url:
+            logger.info(f"Simple video URL detected, skipping LLM: {video_url}")
+            await handle_download_action(message, video_url)
+            return
+
     try:
         # Get user's video memory
         user_memory = video_memory.get_video_memory(user.id)
@@ -237,6 +246,14 @@ async def handle_llm_request(message: types.Message, text: str) -> None:
         action = llm_result["action"]
         confidence = llm_result["confidence"]
         use_last_video = llm_result.get("use_last_video", False)
+
+        # Handle rate limit specially
+        if action == "rate_limit":
+            await message.reply(
+                "⏳ Сервис временно перегружен. Пожалуйста, подождите 1-2 минуты и попробуйте снова.\n\n"
+                "Или попробуйте отправить ссылку без дополнительного текста для быстрой обработки."
+            )
+            return
 
         # Check confidence level
         if confidence < 0.5:
@@ -272,11 +289,28 @@ async def handle_llm_request(message: types.Message, text: str) -> None:
             await message.reply("Привет! 🤖")
 
 
+async def progress_callback_factory(message: types.Message):
+    """Create progress callback function for video processing."""
+
+    async def progress_callback(text: str):
+        try:
+            await message.reply(text)
+        except Exception as e:
+            logger.warning(f"Failed to send progress message: {e}")
+
+    return progress_callback
+
+
 async def handle_download_action(message: types.Message, video_url: str) -> None:
     """Handle simple download action."""
     if not video_url:
         await message.reply("❌ Не найдена ссылка на видео")
         return
+
+    # Notify user about processing
+    await message.reply(
+        "📥 Обрабатываю ссылку...\n" "⏳ Проверяю различные методы скачивания видео."
+    )
 
     await handle_video_download(message, video_url)
 
@@ -334,8 +368,11 @@ async def handle_trim_from_memory(
         # file_id is just for reference, we still need to process the video
         await processing_msg.edit_text("🔄 Загружаю видео для обрезки...")
 
-        # Download video
-        video_path = await video_processor.download_video(user_memory.video_url)
+        # Create progress callback and download video
+        progress_callback = await progress_callback_factory(message)
+        video_path = await video_processor.download_video(
+            user_memory.video_url, progress_callback
+        )
 
         if video_path and Path(video_path).exists():
             await processing_msg.edit_text("✂️ Обрезаю видео...")
@@ -408,8 +445,11 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
 
     logger.info(f"LLM-triggered download from {user.id}: {video_url}")
 
-    # Send processing message
-    processing_msg = await message.reply("⏳ Скачиваю видео...")
+    # Create progress callback
+    progress_callback = await progress_callback_factory(message)
+
+    # Send initial processing message
+    processing_msg = await message.reply("⏳ Подготавливаю скачивание...")
 
     try:
         # Get video info first
@@ -424,8 +464,8 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
             )
             await processing_msg.edit_text(info_text)
 
-        # Download video
-        video_path = await video_processor.download_video(video_url)
+        # Download video with progress updates
+        video_path = await video_processor.download_video(video_url, progress_callback)
 
         if video_path and Path(video_path).exists():
             # Check file size
@@ -469,9 +509,22 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
                     logger.error(f"Error cleaning up file {video_path}: {e}")
 
         else:
-            await processing_msg.edit_text(
-                "❌ Не удалось скачать видео. Проверьте ссылку."
-            )
+            # Try to get video info to understand what went wrong
+            video_info = await video_processor.get_video_info(video_url)
+            if video_info:
+                await processing_msg.edit_text(
+                    f"❌ Видео найдено ({video_info['title']}), но скачать не удалось.\n\n"
+                    f"Возможные причины:\n"
+                    f"• Видео доступно только авторизованным пользователям\n"
+                    f"• Региональные ограничения\n"
+                    f"• Временные технические проблемы\n\n"
+                    f"Попробуйте другую ссылку или позже."
+                )
+            else:
+                await processing_msg.edit_text(
+                    "❌ Не удалось найти или скачать видео.\n"
+                    "Проверьте правильность ссылки."
+                )
 
     except Exception as e:
         logger.error(f"Error in video download: {e}")
@@ -504,7 +557,7 @@ async def handle_video_download_trim(
             await processing_msg.edit_text(info_text)
 
         # Download video
-        video_path = await video_processor.download_video(video_url)
+        video_path = await video_processor.download_video(video_url, progress_callback)
 
         if video_path and Path(video_path).exists():
             await processing_msg.edit_text("✂️ Обрезаю видео...")
@@ -584,7 +637,7 @@ async def handle_video_request(message: types.Message, text: str) -> None:
             await processing_msg.edit_text(info_text)
 
         # Download video
-        video_path = await video_processor.download_video(video_url)
+        video_path = await video_processor.download_video(video_url, progress_callback)
 
         if video_path and Path(video_path).exists():
             # Check file size
@@ -682,7 +735,7 @@ async def handle_combined_request(
             await processing_msg.edit_text(info_text)
 
         # Download video
-        video_path = await video_processor.download_video(video_url)
+        video_path = await video_processor.download_video(video_url, progress_callback)
 
         if video_path and Path(video_path).exists():
             await processing_msg.edit_text("✂️ Обрезаю видео...")

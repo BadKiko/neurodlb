@@ -4,10 +4,12 @@ Handles video downloading, trimming and processing.
 """
 
 import asyncio
+import glob
 import logging
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -15,6 +17,7 @@ from urllib.parse import urlparse
 import yt_dlp
 
 from config import TEMP_DIR, MAX_VIDEO_DURATION, MAX_FILE_SIZE_MB
+from video_source_handler import VideoSourceHandler
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +27,11 @@ class VideoProcessor:
     Main class for video processing operations.
     """
 
-    def __init__(self):
+    def __init__(self, llm_handler=None):
         """Initialize video processor."""
         self.temp_dir = Path(TEMP_DIR)
         self.temp_dir.mkdir(exist_ok=True)
+        self.source_handler = VideoSourceHandler(llm_handler) if llm_handler else None
         logger.info(f"VideoProcessor initialized with temp dir: {self.temp_dir}")
 
     def _is_valid_video_url(self, url: str) -> bool:
@@ -64,11 +68,11 @@ class VideoProcessor:
         """
         return {
             "outtmpl": str(output_path / "%(title)s.%(ext)s"),
+            "restrictfilenames": True,  # Sanitize filenames
             "format": "best[height<=720]",  # Limit quality to avoid large files
-            "max_filesize": MAX_FILE_SIZE_MB * 1024 * 1024,  # Convert MB to bytes
             "noplaylist": True,  # Download single video, not playlist
-            "quiet": True,  # Reduce output
-            "no_warnings": False,  # Show warnings but not too verbose
+            "quiet": False,  # Show output for debugging
+            "no_warnings": False,  # Show warnings
             "extract_flat": False,
             # Additional options to bypass restrictions
             "ignoreerrors": False,  # Don't ignore errors
@@ -78,6 +82,7 @@ class VideoProcessor:
             "sleep_interval_requests": 1,  # Sleep between requests to same domain
             "retries": 3,  # Number of retries
             "fragment_retries": 3,  # Number of fragment retries
+            "concurrent_fragment_downloads": 1,  # Avoid concurrent downloads
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -89,7 +94,7 @@ class VideoProcessor:
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
                 "Sec-Fetch-Site": "none",
-                "Cache-Control": "max-age=0"
+                "Cache-Control": "max-age=0",
             },
         }
 
@@ -109,11 +114,95 @@ class VideoProcessor:
 
             # Run yt-dlp in thread pool to avoid blocking
             def download():
-                with yt_dlp.YoutubeDL(options) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    return ydl.prepare_filename(info)
+                try:
+                    with yt_dlp.YoutubeDL(options) as ydl:
+                        # Get info first without downloading to prepare filename correctly
+                        info = ydl.extract_info(url, download=False)
+                        expected_filename = ydl.prepare_filename(info)
+                        logger.info(f"Expected filename: {expected_filename}")
 
-            result = await asyncio.to_thread(download)
+                        # Now download with the same ydl instance
+                        ydl.download([url])
+
+                        # After download, check for the actual file
+                        # First try the expected filename
+                        if expected_filename and Path(expected_filename).exists():
+                            file_size = Path(expected_filename).stat().st_size
+                            if file_size > 0:
+                                logger.info(
+                                    f"File found at expected location: {expected_filename}"
+                                )
+                                return expected_filename, info
+                            else:
+                                logger.warning(
+                                    f"Downloaded file is empty: {expected_filename}"
+                                )
+
+                        # If expected file not found or empty, scan the directory
+
+                        video_extensions = [
+                            "*.mp4",
+                            "*.webm",
+                            "*.avi",
+                            "*.mov",
+                            "*.wmv",
+                            "*.flv",
+                            "*.m3u8",
+                            "*.m3u",
+                        ]
+
+                        # Get the directory where file should be
+                        download_dir = (
+                            Path(expected_filename).parent
+                            if expected_filename
+                            else output_path
+                        )
+
+                        logger.info(
+                            f"Scanning directory {download_dir} for video files"
+                        )
+
+                        # Scan for any video files in the download directory
+                        for ext in video_extensions:
+                            pattern = str(download_dir / ext)
+                            found_files = glob.glob(pattern)
+                            if found_files:
+                                for found_file in found_files:
+                                    file_size = Path(found_file).stat().st_size
+                                    if file_size > 0:
+                                        logger.info(
+                                            f"Found video file: {found_file} ({file_size} bytes)"
+                                        )
+                                        return found_file, info
+
+                        # If still no file found, check the entire temp directory
+                        logger.warning(
+                            "No video files found in download directory, scanning temp directory"
+                        )
+                        temp_dir = output_path.parent
+                        for ext in video_extensions:
+                            pattern = str(temp_dir / "**" / ext)
+                            found_files = glob.glob(pattern, recursive=True)
+                            if found_files:
+                                for found_file in found_files:
+                                    # Check if file was created recently (within last 5 minutes)
+                                    mtime = Path(found_file).stat().st_mtime
+                                    if time.time() - mtime < 300:  # 5 minutes
+                                        file_size = Path(found_file).stat().st_size
+                                        if file_size > 0:
+                                            logger.info(
+                                                f"Found recent video file: {found_file} ({file_size} bytes)"
+                                            )
+                                            return found_file, info
+
+                        logger.error("No video files found after download")
+                        return None, info
+
+                except Exception as e:
+                    logger.error(f"yt-dlp download failed: {e}")
+                    return None, None
+
+            result, info = await asyncio.to_thread(download)
 
             if result and Path(result).exists():
                 file_size = Path(result).stat().st_size
@@ -122,7 +211,11 @@ class VideoProcessor:
                 )
                 return result
             else:
-                logger.error("Download completed but file not found")
+                # Check if we have info but no file - this indicates yt-dlp couldn't download
+                if info:
+                    logger.warning("yt-dlp extracted info but failed to download file")
+                else:
+                    logger.error("yt-dlp completely failed to process URL")
                 return None
 
         except yt_dlp.utils.DownloadError as e:
@@ -132,12 +225,13 @@ class VideoProcessor:
             logger.error(f"Unexpected error during download: {e}")
             return None
 
-    async def download_video(self, url: str) -> Optional[str]:
+    async def download_video(self, url: str, progress_callback=None) -> Optional[str]:
         """
-        Download video from URL.
+        Download video from URL using four-stage approach.
 
         Args:
             url: Video URL to download
+            progress_callback: Optional callback function for progress updates
 
         Returns:
             Path to downloaded video file or None if failed
@@ -155,6 +249,20 @@ class VideoProcessor:
 
             download_dir = self.temp_dir / f"download_{uuid.uuid4().hex[:8]}"
             download_dir.mkdir(exist_ok=True)
+
+            # Use four-stage approach if source handler is available
+            if self.source_handler:
+                video_url, method = await self.source_handler.extract_video_url(
+                    url, progress_callback
+                )
+                if video_url:
+                    logger.info(
+                        "Using extracted video URL via %s: %s", method, video_url
+                    )
+                    url = video_url
+                else:
+                    logger.warning("Four-stage extraction failed: %s", method)
+                    return None
 
             # Download video
             result = await self._download_with_yt_dlp(url, download_dir)
