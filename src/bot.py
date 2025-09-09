@@ -25,7 +25,7 @@ llm_handler = LLMHandler(MISTRAL_API_KEY) if MISTRAL_API_KEY else None
 video_processor = VideoProcessor(llm_handler)
 
 
-def get_recommended_max_size() -> int:
+def get_max_file_size() -> int:
     """Get maximum file size based on bot configuration."""
     # If using local Bot API, allow up to 2GB
     if TELEGRAM_BOT_API_URL:
