@@ -77,12 +77,34 @@ class VideoProcessor:
             # Additional options to bypass restrictions
             "ignoreerrors": False,  # Don't ignore errors
             "no_check_certificates": False,  # Check SSL certificates
-            "sleep_interval": 1,  # Sleep between requests
-            "max_sleep_interval": 5,  # Max sleep interval
-            "sleep_interval_requests": 1,  # Sleep between requests to same domain
-            "retries": 3,  # Number of retries
-            "fragment_retries": 3,  # Number of fragment retries
-            "concurrent_fragment_downloads": 1,  # Avoid concurrent downloads
+            "retries": 5,  # Number of retries
+            "fragment_retries": 5,  # Number of fragment retries
+            "concurrent_fragment_downloads": 4,  # Allow concurrent downloads for better speed
+            "http_chunk_size": 1048576,  # 1MB chunks for better performance
+            "buffersize": 1024,  # Buffer size in KB
+            # Speed optimization
+            "throttled_rate": None,  # No speed throttling
+            "no_sleep": False,  # Allow sleeping but with longer intervals
+            "sleep_interval": 0,  # No sleep between requests for better speed
+            "sleep_interval_requests": 0,  # No sleep between requests to same domain
+            "max_sleep_interval": 0,  # No max sleep interval
+            # Additional performance options
+            "external_downloader": "aria2c",  # Try aria2c first for better speed
+            "external_downloader_args": {
+                "aria2c": [
+                    "--min-split-size=1M",
+                    "--max-connection-per-server=16",
+                    "--max-concurrent-downloads=4",
+                    "--split=16",
+                    "--optimize-concurrent-downloads",
+                    "--allow-overwrite=true",
+                    "--auto-file-renaming=false",
+                ],
+                "ffmpeg": ["-hide_banner", "-loglevel", "warning"],
+            },
+            # Universal options for all platforms
+            "continue": True,  # Resume interrupted downloads
+            "keepvideo": False,  # Don't keep intermediate files
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -94,7 +116,16 @@ class VideoProcessor:
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
                 "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
                 "Cache-Control": "max-age=0",
+                "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "video",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+                "Priority": "u=1",
+                "Range": "bytes=0-",
             },
         }
 
