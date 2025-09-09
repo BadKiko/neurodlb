@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
-from aiogram.client.session.aiohttp import AioHTTPClient
+from aiogram.client.session.aiohttp import AioHTTPSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 
@@ -799,7 +799,7 @@ async def run_bot() -> None:
     if TELEGRAM_BOT_API_URL:
         logger.info(f"Using local Telegram Bot API server: {TELEGRAM_BOT_API_URL}")
         # Create custom session with local API server
-        session = AioHTTPClient(api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL))
+        session = AioHTTPSession(api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL))
         bot = Bot(
             token=TELEGRAM_BOT_TOKEN,
             session=session,
