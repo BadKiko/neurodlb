@@ -25,13 +25,56 @@ llm_handler = LLMHandler(MISTRAL_API_KEY) if MISTRAL_API_KEY else None
 video_processor = VideoProcessor(llm_handler)
 
 
-def get_max_file_size() -> int:
+def get_recommended_max_size() -> int:
     """Get maximum file size based on bot configuration."""
     # If using local Bot API, allow up to 2GB
     if TELEGRAM_BOT_API_URL:
         return 2 * 1024 * 1024 * 1024  # 2GB
     else:
         return 50 * 1024 * 1024  # 50MB for standard Telegram API
+
+
+def get_recommended_max_size() -> int:
+    """Get recommended maximum file size for reliable sending."""
+    # Even with local Bot API, large files can cause issues
+    # Recommend 500MB as a safe limit for most cases
+    if TELEGRAM_BOT_API_URL:
+        return 500 * 1024 * 1024  # 500MB for reliability with local API
+    else:
+        return 45 * 1024 * 1024  # 45MB for standard API (leave some margin)
+
+
+def check_file_size_for_telegram(file_size: int) -> tuple[bool, str]:
+    """
+    Check if file size is suitable for Telegram and return appropriate message.
+
+    Returns:
+        tuple: (is_acceptable, message)
+    """
+    max_size = get_max_file_size()
+    recommended_size = get_recommended_max_size()
+
+    if file_size > max_size:
+        max_size_mb = max_size // (1024 * 1024)
+        return (
+            False,
+            f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\nМаксимальный размер: {max_size_mb}MB.",
+        )
+
+    if file_size > recommended_size:
+        recommended_mb = recommended_size // (1024 * 1024)
+        return (
+            True,
+            f"⚠️ Видео большое ({file_size // (1024*1024)}MB).\nРекомендованный размер: {recommended_mb}MB.\nОтправка может занять время...",
+        )
+
+    if file_size > 100 * 1024 * 1024:  # Warning for files > 100MB
+        return (
+            True,
+            f"⚠️ Видео большое ({file_size // (1024*1024)}MB).\nОтправка может занять время...",
+        )
+
+    return True, ""
 
 
 @dataclass
@@ -383,14 +426,14 @@ async def handle_trim_from_memory(
             if trimmed_path and Path(trimmed_path).exists():
                 # Check file size
                 file_size = Path(trimmed_path).stat().st_size
-                max_size = get_max_file_size()
+                is_acceptable, size_message = check_file_size_for_telegram(file_size)
 
-                if file_size > max_size:
-                    await message.reply(
-                        f"❌ Обрезанное видео слишком большое ({file_size // (1024*1024)}MB).\n"
-                        f"Попробуйте меньший временной интервал."
-                    )
-                else:
+                if not is_acceptable:
+                    await message.reply(size_message)
+                elif size_message:  # Warning message for large files
+                    await message.reply(size_message)
+
+                if is_acceptable:
                     # Send trimmed video
                     await message.reply("📤 Отправляю видео в Telegram...")
                     await message.reply_video(
@@ -453,15 +496,13 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
         if video_path and Path(video_path).exists():
             # Check file size
             file_size = Path(video_path).stat().st_size
-            max_size = get_max_file_size()
+            is_acceptable, size_message = check_file_size_for_telegram(file_size)
 
-            if file_size > max_size:
-                max_size_mb = max_size // (1024 * 1024)
-                await message.reply(
-                    f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
-                    f"Максимальный размер файла: {max_size_mb}MB."
-                )
+            if not is_acceptable:
+                await message.reply(size_message)
                 return
+            elif size_message:  # Warning message for large files
+                await message.reply(size_message)
 
             # Send video
             await message.reply("📤 Отправляю видео в Telegram...")
@@ -544,14 +585,14 @@ async def handle_video_download_trim(
             if trimmed_path and Path(trimmed_path).exists():
                 # Check file size
                 file_size = Path(trimmed_path).stat().st_size
-                max_size = get_max_file_size()
+                is_acceptable, size_message = check_file_size_for_telegram(file_size)
 
-                if file_size > max_size:
-                    await message.reply(
-                        f"❌ Обрезанное видео слишком большое ({file_size // (1024*1024)}MB).\n"
-                        f"Попробуйте меньший временной интервал."
-                    )
-                else:
+                if not is_acceptable:
+                    await message.reply(size_message)
+                elif size_message:  # Warning message for large files
+                    await message.reply(size_message)
+
+                if is_acceptable:
                     # Send trimmed video
                     await message.reply("📤 Отправляю видео в Telegram...")
                     await message.reply_video(
@@ -604,16 +645,15 @@ async def handle_video_request(message: types.Message, text: str) -> None:
         if video_path and Path(video_path).exists():
             # Check file size
             file_size = Path(video_path).stat().st_size
-            max_size = get_max_file_size()
+            is_acceptable, size_message = check_file_size_for_telegram(file_size)
 
-            if file_size > max_size:
-                max_size_mb = max_size // (1024 * 1024)
-                await message.reply(
-                    f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
-                    f"Максимальный размер файла: {max_size_mb}MB."
-                )
+            if not is_acceptable:
+                await message.reply(size_message)
                 return
-            else:
+            elif size_message:  # Warning message for large files
+                await message.reply(size_message)
+
+            if is_acceptable:
                 # Send video
                 await message.reply("📤 Отправляю видео в Telegram...")
                 sent_message = await message.reply_video(
@@ -709,14 +749,14 @@ async def handle_combined_request(
             if trimmed_path and Path(trimmed_path).exists():
                 # Check file size
                 file_size = Path(trimmed_path).stat().st_size
-                max_size = get_max_file_size()
+                is_acceptable, size_message = check_file_size_for_telegram(file_size)
 
-                if file_size > max_size:
-                    await message.reply(
-                        f"❌ Обрезанное видео слишком большое ({file_size // (1024*1024)}MB).\n"
-                        f"Попробуйте меньший временной интервал."
-                    )
-                else:
+                if not is_acceptable:
+                    await message.reply(size_message)
+                elif size_message:  # Warning message for large files
+                    await message.reply(size_message)
+
+                if is_acceptable:
                     # Send trimmed video
                     await message.reply("📤 Отправляю видео в Telegram...")
                     await message.reply_video(
