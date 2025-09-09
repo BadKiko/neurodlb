@@ -14,7 +14,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-from config import TELEGRAM_BOT_TOKEN, MISTRAL_API_KEY
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_API_URL, MISTRAL_API_KEY
 from video_processor import VideoProcessor
 from llm_handler import LLMHandler
 
@@ -795,8 +795,14 @@ async def run_bot() -> None:
         raise ValueError("TELEGRAM_BOT_TOKEN is not set")
 
     # Create bot and dispatcher
-    bot = Bot(
-        token=TELEGRAM_BOT_TOKEN,
+    # Use local Bot API server if configured (allows files up to 2GB)
+    bot_kwargs = {"token": TELEGRAM_BOT_TOKEN}
+    if TELEGRAM_BOT_API_URL:
+        logger.info(f"Using local Telegram Bot API server: {TELEGRAM_BOT_API_URL}")
+        bot_kwargs["api"] = TELEGRAM_BOT_API_URL
+        logger.info("✅ Local Bot API enabled - file size limit increased to 2GB!")
+
+    bot = Bot(**bot_kwargs)
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()

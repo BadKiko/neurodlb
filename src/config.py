@@ -13,6 +13,9 @@ TEMP_DIR = PROJECT_ROOT / "temp"
 
 # Telegram settings
 TELEGRAM_BOT_TOKEN: Optional[str] = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_BOT_API_URL: Optional[str] = os.getenv(
+    "TELEGRAM_BOT_API_URL"
+)  # For local Bot API server
 
 # Mistral API settings
 MISTRAL_API_KEY: Optional[str] = os.getenv("MISTRAL_API_KEY")
