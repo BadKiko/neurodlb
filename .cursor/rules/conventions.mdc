@@ -1,0 +1,338 @@
+---
+alwaysApply: true
+---
+
+# Соглашения по разработке
+
+> Основано на техническом видении проекта: [vision.md](./vision.md)
+
+## Основные принципы
+
+### KISS (Keep It Simple, Stupid)
+
+- **Максимальная простота** - избегай сложных решений
+- **Один файл = одна ответственность** - не смешивай логику
+- **Минимум зависимостей** - используй только необходимое
+- **Понятные имена** - код должен читаться как книга
+
+### MVP подход
+
+- **Только необходимый функционал** - никаких "на всякий случай" фич
+- **Итеративная разработка** - по одной функции за раз
+- **Быстрая проверка идеи** - приоритет скорости над совершенством
+
+## Структура кода
+
+### Организация файлов
+
+```
+src/
+├── bot.py              # Основной файл бота
+├── video_processor.py  # Обработка видео
+├── llm_handler.py      # Работа с Mistral API
+├── utils.py           # Вспомогательные функции
+└── config.py          # Конфигурация
+```
+
+### Именование
+
+- **Файлы**: snake_case (`video_processor.py`)
+- **Классы**: PascalCase (`VideoProcessor`)
+- **Функции/переменные**: snake_case (`process_video()`)
+- **Константы**: UPPER_CASE (`MAX_FILE_SIZE`)
+
+## Обработка ошибок
+
+### Принципы
+
+- **Graceful degradation** - бот не должен падать
+- **Информативные сообщения** - пользователь должен понимать что произошло
+- **Логирование всех ошибок** - для отладки
+
+### Паттерн обработки
+
+```python
+try:
+    # основная логика
+    result = process_video(url)
+    await bot.send_video(chat_id, result)
+except VideoDownloadError as e:
+    logger.error(f"Download failed: {e}")
+    await bot.send_message(chat_id, "❌ Не удалось скачать видео")
+except Exception as e:
+    logger.error(f"Unexpected error: {e}")
+    await bot.send_message(chat_id, "❌ Произошла ошибка, попробуйте позже")
+```
+
+## Асинхронность
+
+### Правила
+
+- **Все I/O операции** должны быть асинхронными
+- **Используй `async/await`** для всех внешних вызовов
+- **Не блокируй event loop** - используй `asyncio.to_thread()` для CPU-интенсивных задач
+
+### Пример
+
+```python
+async def download_video(url: str) -> str:
+    # Скачивание в отдельном потоке
+    file_path = await asyncio.to_thread(yt_dlp_download, url)
+    return file_path
+```
+
+## Конфигурация
+
+### Переменные окружения
+
+- **Все настройки в `.env`** - никаких хардкодов
+- **Валидация при старте** - проверяй наличие обязательных переменных
+- **Значения по умолчанию** - для необязательных параметров
+
+### Структура .env
+
+```env
+# Telegram
+TELEGRAM_BOT_TOKEN=your_token_here
+
+# Mistral API
+MISTRAL_API_KEY=your_key_here
+
+# Настройки
+MAX_VIDEO_DURATION=300
+TEMP_DIR=/tmp/video_bot
+```
+
+## Логирование
+
+### Уровни
+
+- **INFO** - основные действия пользователя
+- **WARNING** - нестандартные ситуации
+- **ERROR** - ошибки с контекстом
+- **DEBUG** - детальная отладка
+
+### Формат
+
+```python
+logger.info(f"User {user_id} requested video: {url}")
+logger.error(f"Video processing failed for {url}: {error}")
+```
+
+## Работа с файлами
+
+### Временные файлы
+
+- **Используй `tempfile`** - автоматическая очистка
+- **Указывай расширения** - для правильной обработки
+- **Очищай после использования** - не засоряй диск
+
+### Большие файлы
+
+- **Потоковая обработка** - не загружай все в память
+- **Используй Telegram file_id** - для файлов >50MB
+- **Проверяй размер** - перед отправкой
+
+## Комментарии и документация
+
+### Правила
+
+- **Комментарии на английском** - для кода
+- **Docstrings для функций** - краткое описание назначения
+- **Типизация** - используй type hints везде
+
+### Пример
+
+```python
+async def process_video_with_trim(
+    url: str,
+    start_time: int,
+    end_time: int
+) -> str:
+    """
+    Download video and trim it to specified time range.
+
+    Args:
+        url: Video URL to download
+        start_time: Start time in seconds
+        end_time: End time in seconds
+
+    Returns:
+        Path to processed video file
+    """
+    # Implementation here
+```
+
+## Тестирование
+
+### Подход
+
+- **Ручное тестирование** - на старте проекта
+- **Логирование** - для отслеживания проблем
+# Соглашения по разработке
+
+> Основано на техническом видении проекта: [vision.md](./vision.md)
+
+## Основные принципы
+
+### KISS (Keep It Simple, Stupid)
+
+- **Максимальная простота** - избегай сложных решений
+- **Один файл = одна ответственность** - не смешивай логику
+- **Минимум зависимостей** - используй только необходимое
+- **Понятные имена** - код должен читаться как книга
+
+### MVP подход
+
+- **Только необходимый функционал** - никаких "на всякий случай" фич
+- **Итеративная разработка** - по одной функции за раз
+- **Быстрая проверка идеи** - приоритет скорости над совершенством
+
+## Структура кода
+
+### Организация файлов
+
+```
+src/
+├── bot.py              # Основной файл бота
+├── video_processor.py  # Обработка видео
+├── llm_handler.py      # Работа с Mistral API
+├── utils.py           # Вспомогательные функции
+└── config.py          # Конфигурация
+```
+
+### Именование
+
+- **Файлы**: snake_case (`video_processor.py`)
+- **Классы**: PascalCase (`VideoProcessor`)
+- **Функции/переменные**: snake_case (`process_video()`)
+- **Константы**: UPPER_CASE (`MAX_FILE_SIZE`)
+
+## Обработка ошибок
+
+### Принципы
+
+- **Graceful degradation** - бот не должен падать
+- **Информативные сообщения** - пользователь должен понимать что произошло
+- **Логирование всех ошибок** - для отладки
+
+### Паттерн обработки
+
+```python
+try:
+    # основная логика
+    result = process_video(url)
+    await bot.send_video(chat_id, result)
+except VideoDownloadError as e:
+    logger.error(f"Download failed: {e}")
+    await bot.send_message(chat_id, "❌ Не удалось скачать видео")
+except Exception as e:
+    logger.error(f"Unexpected error: {e}")
+    await bot.send_message(chat_id, "❌ Произошла ошибка, попробуйте позже")
+```
+
+## Асинхронность
+
+### Правила
+
+- **Все I/O операции** должны быть асинхронными
+- **Используй `async/await`** для всех внешних вызовов
+- **Не блокируй event loop** - используй `asyncio.to_thread()` для CPU-интенсивных задач
+
+### Пример
+
+```python
+async def download_video(url: str) -> str:
+    # Скачивание в отдельном потоке
+    file_path = await asyncio.to_thread(yt_dlp_download, url)
+    return file_path
+```
+
+## Конфигурация
+
+### Переменные окружения
+
+- **Все настройки в `.env`** - никаких хардкодов
+- **Валидация при старте** - проверяй наличие обязательных переменных
+- **Значения по умолчанию** - для необязательных параметров
+
+### Структура .env
+
+```env
+# Telegram
+TELEGRAM_BOT_TOKEN=your_token_here
+
+# Mistral API
+MISTRAL_API_KEY=your_key_here
+
+# Настройки
+MAX_VIDEO_DURATION=300
+TEMP_DIR=/tmp/video_bot
+```
+
+## Логирование
+
+### Уровни
+
+- **INFO** - основные действия пользователя
+- **WARNING** - нестандартные ситуации
+- **ERROR** - ошибки с контекстом
+- **DEBUG** - детальная отладка
+
+### Формат
+
+```python
+logger.info(f"User {user_id} requested video: {url}")
+logger.error(f"Video processing failed for {url}: {error}")
+```
+
+## Работа с файлами
+
+### Временные файлы
+
+- **Используй `tempfile`** - автоматическая очистка
+- **Указывай расширения** - для правильной обработки
+- **Очищай после использования** - не засоряй диск
+
+### Большие файлы
+
+- **Потоковая обработка** - не загружай все в память
+- **Используй Telegram file_id** - для файлов >50MB
+- **Проверяй размер** - перед отправкой
+
+## Комментарии и документация
+
+### Правила
+
+- **Комментарии на английском** - для кода
+- **Docstrings для функций** - краткое описание назначения
+- **Типизация** - используй type hints везде
+
+### Пример
+
+```python
+async def process_video_with_trim(
+    url: str,
+    start_time: int,
+    end_time: int
+) -> str:
+    """
+    Download video and trim it to specified time range.
+
+    Args:
+        url: Video URL to download
+        start_time: Start time in seconds
+        end_time: End time in seconds
+
+    Returns:
+        Path to processed video file
+    """
+    # Implementation here
+```
+
+## Тестирование
+
+### Подход
+
+- **Ручное тестирование** - на старте проекта
+- **Логирование** - для отслеживания проблем

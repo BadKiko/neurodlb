@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  neurodlb-bot:
+    build: .
+    container_name: neurodlb-bot
+    env_file:
+      - .env
+    volumes:
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    restart: unless-stopped
+    # Remove this for production
+    stdin_open: true
+    tty: true
