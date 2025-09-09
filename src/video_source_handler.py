@@ -367,7 +367,7 @@ class VideoSourceHandler:
                                     });
                                 }
                                 // Also look for direct video URLs
-                                const urlMatches = content.match(/https?:\/\/[^\s"']+\.(mp4|webm|avi|mov|wmv|flv|m3u8|m3u)/gi);
+                                const urlMatches = content.match(/https?:\\/\\/[^\\s"']+\\.(mp4|webm|avi|mov|wmv|flv|m3u8|m3u)/gi);
                                 if (urlMatches) {
                                     urls.push(...urlMatches);
                                 }

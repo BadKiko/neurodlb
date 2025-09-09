@@ -25,6 +25,15 @@ llm_handler = LLMHandler(MISTRAL_API_KEY) if MISTRAL_API_KEY else None
 video_processor = VideoProcessor(llm_handler)
 
 
+def get_max_file_size() -> int:
+    """Get maximum file size based on bot configuration."""
+    # If using local Bot API, allow up to 2GB
+    if TELEGRAM_BOT_API_URL:
+        return 2 * 1024 * 1024 * 1024  # 2GB
+    else:
+        return 50 * 1024 * 1024  # 50MB for standard Telegram API
+
+
 @dataclass
 class UserVideoMemory:
     """Memory storage for user's last processed video."""
@@ -374,7 +383,7 @@ async def handle_trim_from_memory(
             if trimmed_path and Path(trimmed_path).exists():
                 # Check file size
                 file_size = Path(trimmed_path).stat().st_size
-                max_size = 50 * 1024 * 1024  # 50MB
+                max_size = get_max_file_size()
 
                 if file_size > max_size:
                     await message.reply(
@@ -444,12 +453,13 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
         if video_path and Path(video_path).exists():
             # Check file size
             file_size = Path(video_path).stat().st_size
-            max_size = 50 * 1024 * 1024  # 50MB
+            max_size = get_max_file_size()
 
             if file_size > max_size:
+                max_size_mb = max_size // (1024*1024)
                 await message.reply(
                     f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
-                    f"Telegram ограничивает размер файла до 50MB."
+                    f"Максимальный размер файла: {max_size_mb}MB."
                 )
                 return
 
@@ -534,7 +544,7 @@ async def handle_video_download_trim(
             if trimmed_path and Path(trimmed_path).exists():
                 # Check file size
                 file_size = Path(trimmed_path).stat().st_size
-                max_size = 50 * 1024 * 1024  # 50MB
+                max_size = get_max_file_size()
 
                 if file_size > max_size:
                     await message.reply(
@@ -594,13 +604,14 @@ async def handle_video_request(message: types.Message, text: str) -> None:
         if video_path and Path(video_path).exists():
             # Check file size
             file_size = Path(video_path).stat().st_size
-            max_size = 50 * 1024 * 1024  # 50MB
+            max_size = get_max_file_size()
 
-            if file_size > max_size:
-                await message.reply(
-                    f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
-                    f"Telegram ограничивает размер файла до 50MB."
-                )
+                if file_size > max_size:
+                    max_size_mb = max_size // (1024*1024)
+                    await message.reply(
+                        f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
+                        f"Максимальный размер файла: {max_size_mb}MB."
+                    )
             else:
                 # Send video
                 await message.reply("📤 Отправляю видео в Telegram...")
@@ -697,7 +708,7 @@ async def handle_combined_request(
             if trimmed_path and Path(trimmed_path).exists():
                 # Check file size
                 file_size = Path(trimmed_path).stat().st_size
-                max_size = 50 * 1024 * 1024  # 50MB
+                max_size = get_max_file_size()
 
                 if file_size > max_size:
                     await message.reply(

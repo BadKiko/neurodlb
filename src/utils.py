@@ -4,6 +4,7 @@ Helper functions for common operations.
 """
 
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -22,9 +23,14 @@ def setup_logging(level: str = "INFO", log_file: Optional[str] = None) -> None:
         level=getattr(logging, level.upper()),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.StreamHandler(),
-            *(logging.FileHandler(log_file) for log_file in [log_file] if log_file),
+            logging.StreamHandler(sys.stdout),  # Explicitly use stdout
+            *(
+                logging.FileHandler(log_file, encoding="utf-8")
+                for log_file in [log_file]
+                if log_file
+            ),
         ],
+        encoding="utf-8",  # Set UTF-8 encoding for all handlers
     )
 
 
