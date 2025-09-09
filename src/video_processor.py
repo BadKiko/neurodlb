@@ -69,14 +69,15 @@ class VideoProcessor:
         return {
             "outtmpl": str(output_path / "%(title)s.%(ext)s"),
             "restrictfilenames": True,  # Sanitize filenames
-            "format": "best[height<=720]",  # Limit quality to avoid large files
+            "format": "best/bestvideo+bestaudio/best",  # Best quality with fallbacks
             "noplaylist": True,  # Download single video, not playlist
             "quiet": False,  # Show output for debugging
             "no_warnings": False,  # Show warnings
             "extract_flat": False,
             # Additional options to bypass restrictions
-            "ignoreerrors": False,  # Don't ignore errors
+            "ignoreerrors": True,  # Ignore errors and try to continue
             "no_check_certificates": False,  # Check SSL certificates
+            "prefer_ffmpeg": True,  # Use ffmpeg for better compatibility
             "retries": 5,  # Number of retries
             "fragment_retries": 5,  # Number of fragment retries
             "concurrent_fragment_downloads": 4,  # Allow concurrent downloads for better speed
@@ -242,6 +243,14 @@ class VideoProcessor:
                 )
                 return result
             else:
+                # Try fallback formats if the first attempt failed
+                logger.warning("Primary format failed, trying fallback formats...")
+                fallback_result = await self._download_with_fallback_formats(
+                    url, output_path
+                )
+                if fallback_result:
+                    return fallback_result
+
                 # Check if we have info but no file - this indicates yt-dlp couldn't download
                 if info:
                     logger.warning("yt-dlp extracted info but failed to download file")
@@ -255,6 +264,96 @@ class VideoProcessor:
         except Exception as e:
             logger.error(f"Unexpected error during download: {e}")
             return None
+
+    async def _download_with_fallback_formats(
+        self, url: str, output_path: Path
+    ) -> Optional[str]:
+        """
+        Try downloading with different fallback formats when the primary format fails.
+
+        Args:
+            url: Video URL
+            output_path: Directory to save video
+
+        Returns:
+            Path to downloaded file or None if failed
+        """
+        fallback_formats = [
+            "best[height<=1080]",  # 1080p
+            "best[height<=720]",  # 720p
+            "best[height<=480]",  # 480p
+            "worst",  # Any format
+            "bestaudio",  # Audio only as fallback
+        ]
+
+        for format_spec in fallback_formats:
+            try:
+                logger.info(f"Trying fallback format: {format_spec}")
+
+                def fallback_download():
+                    try:
+                        options = self._get_yt_dlp_options(output_path)
+                        options["format"] = format_spec  # Override format
+
+                        with yt_dlp.YoutubeDL(options) as ydl:
+                            info = ydl.extract_info(url, download=False)
+                            expected_filename = ydl.prepare_filename(info)
+                            ydl.download([url])
+
+                            # Check if file was created
+                            if expected_filename and Path(expected_filename).exists():
+                                file_size = Path(expected_filename).stat().st_size
+                                if file_size > 0:
+                                    logger.info(
+                                        f"Fallback format {format_spec} successful: {expected_filename}"
+                                    )
+                                    return expected_filename
+
+                            # Scan for any video files
+                            import glob
+
+                            video_extensions = [
+                                "*.mp4",
+                                "*.webm",
+                                "*.avi",
+                                "*.mov",
+                                "*.wmv",
+                                "*.flv",
+                            ]
+                            download_dir = (
+                                Path(expected_filename).parent
+                                if expected_filename
+                                else output_path
+                            )
+
+                            for ext in video_extensions:
+                                pattern = str(download_dir / ext)
+                                found_files = glob.glob(pattern)
+                                if found_files:
+                                    for found_file in found_files:
+                                        file_size = Path(found_file).stat().st_size
+                                        if file_size > 0:
+                                            logger.info(
+                                                f"Found file with fallback format {format_spec}: {found_file}"
+                                            )
+                                            return found_file
+
+                            return None
+
+                    except Exception as e:
+                        logger.debug(f"Fallback format {format_spec} failed: {e}")
+                        return None
+
+                result = await asyncio.to_thread(fallback_download)
+                if result:
+                    return result
+
+            except Exception as e:
+                logger.debug(f"Error with fallback format {format_spec}: {e}")
+                continue
+
+        logger.error("All fallback formats failed")
+        return None
 
     async def download_video(self, url: str, progress_callback=None) -> Optional[str]:
         """
