@@ -802,7 +802,8 @@ async def run_bot() -> None:
         bot_kwargs["api"] = TELEGRAM_BOT_API_URL
         logger.info("✅ Local Bot API enabled - file size limit increased to 2GB!")
 
-    bot = Bot(**bot_kwargs)
+    bot = Bot(
+        **bot_kwargs,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()

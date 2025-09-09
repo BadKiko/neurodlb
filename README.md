@@ -68,11 +68,9 @@ docker run -d --name telegram-bot-api \
   -e TELEGRAM_API_HASH=your_api_hash \
   aiogram/telegram-bot-api:latest
 
-# Установите переменную окружения
-export TELEGRAM_BOT_API_URL=http://localhost:8081
 
 # Запустите бота
-python src/main.py
+TELEGRAM_BOT_API_URL=http://localhost:8081 python src/main.py
 ```
 
 **✅ Результат:** После настройки сможете загружать видео до **2GB**!
