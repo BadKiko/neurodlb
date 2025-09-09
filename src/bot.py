@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AioHTTPClient
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_API_URL, MISTRAL_API_KEY
@@ -794,16 +796,21 @@ async def run_bot() -> None:
 
     # Create bot and dispatcher
     # Use local Bot API server if configured (allows files up to 2GB)
-    bot_kwargs = {"token": TELEGRAM_BOT_TOKEN}
     if TELEGRAM_BOT_API_URL:
         logger.info(f"Using local Telegram Bot API server: {TELEGRAM_BOT_API_URL}")
-        bot_kwargs["api"] = TELEGRAM_BOT_API_URL
+        # Create custom session with local API server
+        session = AioHTTPClient(api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL))
+        bot = Bot(
+            token=TELEGRAM_BOT_TOKEN,
+            session=session,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
         logger.info("✅ Local Bot API enabled - file size limit increased to 2GB!")
-
-    bot = Bot(
-        **bot_kwargs,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    else:
+        bot = Bot(
+            token=TELEGRAM_BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
     dp = Dispatcher()
 
     # Register handlers
