@@ -456,7 +456,7 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
             max_size = get_max_file_size()
 
             if file_size > max_size:
-                max_size_mb = max_size // (1024*1024)
+                max_size_mb = max_size // (1024 * 1024)
                 await message.reply(
                     f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
                     f"Максимальный размер файла: {max_size_mb}MB."
@@ -606,12 +606,13 @@ async def handle_video_request(message: types.Message, text: str) -> None:
             file_size = Path(video_path).stat().st_size
             max_size = get_max_file_size()
 
-                if file_size > max_size:
-                    max_size_mb = max_size // (1024*1024)
-                    await message.reply(
-                        f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
-                        f"Максимальный размер файла: {max_size_mb}MB."
-                    )
+            if file_size > max_size:
+                max_size_mb = max_size // (1024 * 1024)
+                await message.reply(
+                    f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
+                    f"Максимальный размер файла: {max_size_mb}MB."
+                )
+                return
             else:
                 # Send video
                 await message.reply("📤 Отправляю видео в Telegram...")
