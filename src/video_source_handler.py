@@ -47,58 +47,40 @@ class VideoSourceHandler:
 
         # Stage 1: Try direct yt-dlp download
         logger.info("Stage 1: Attempting direct yt-dlp download")
-        if progress_callback:
-            await progress_callback("🔄 Этап 1: Проверяю прямую ссылку...")
 
         video_url, method = await self._stage1_direct_yt_dlp(url)
         if video_url:
             logger.info("Stage 1 successful: %s", method)
-            if progress_callback:
-                await progress_callback("✅ Найдено видео! Начинаю скачивание...")
             return video_url, method
         else:
             logger.info("Stage 1 failed, moving to next stage")
 
         # Stage 2: Use Playwright to find video elements (moved up)
         logger.info("Stage 2: Using Playwright to search for video elements")
-        if progress_callback:
-            await progress_callback("🔄 Этап 2: Ищу видео с помощью браузера...")
 
         video_url, method = await self._stage3_playwright_search(url)
         if video_url:
             logger.info("Stage 2 successful: %s", method)
-            if progress_callback:
-                await progress_callback("✅ Найдено видео! Начинаю скачивание...")
             return video_url, method
         else:
             logger.info("Stage 2 failed, moving to next stage")
 
         # Stage 3: Use LLM to find video on the page (moved down)
         logger.info("Stage 3: Using LLM to find video on the page")
-        if progress_callback:
-            await progress_callback("🔄 Этап 3: Анализирую страницу с помощью ИИ...")
 
         video_url, method = await self._stage2_llm_find_video(url)
         if video_url:
             logger.info("Stage 3 successful: %s", method)
-            if progress_callback:
-                await progress_callback("✅ Найдено видео! Начинаю скачивание...")
             return video_url, method
         else:
             logger.info("Stage 3 failed, moving to final stage")
 
         # Stage 4: Ask LLM to generate extraction code
         logger.info("Stage 4: Asking LLM to generate extraction code")
-        if progress_callback:
-            await progress_callback(
-                "🔄 Финальный этап: Создаю специальный код для скачивания..."
-            )
 
         video_url, method = await self._stage4_llm_generate_code(url)
         if video_url:
             logger.info("Stage 4 successful: %s", method)
-            if progress_callback:
-                await progress_callback("✅ Найдено видео! Начинаю скачивание...")
             return video_url, method
         else:
             logger.info("All stages failed")

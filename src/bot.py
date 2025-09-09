@@ -293,10 +293,9 @@ async def progress_callback_factory(message: types.Message):
     """Create progress callback function for video processing."""
 
     async def progress_callback(text: str):
-        try:
-            await message.reply(text)
-        except Exception as e:
-            logger.warning(f"Failed to send progress message: {e}")
+        # Simplified: don't send intermediate progress messages
+        logger.debug(f"Progress: {text}")
+        pass
 
     return progress_callback
 
@@ -308,9 +307,7 @@ async def handle_download_action(message: types.Message, video_url: str) -> None
         return
 
     # Notify user about processing
-    await message.reply(
-        "📥 Обрабатываю ссылку...\n" "⏳ Проверяю различные методы скачивания видео."
-    )
+    await message.reply("⏳ Загружаю видео...")
 
     await handle_video_download(message, video_url)
 
@@ -360,14 +357,7 @@ async def handle_trim_from_memory(
         f"Trimming memory video for user {user.id}: {start_time}s - {end_time}s"
     )
 
-    # Start processing
-    processing_msg = await message.reply("⏳ Обрабатываю ваше предыдущее видео...")
-
     try:
-        # Always need to download and trim video, even if we have file_id
-        # file_id is just for reference, we still need to process the video
-        await processing_msg.edit_text("🔄 Загружаю видео для обрезки...")
-
         # Create progress callback and download video
         progress_callback = await progress_callback_factory(message)
         video_path = await video_processor.download_video(
@@ -375,9 +365,8 @@ async def handle_trim_from_memory(
         )
 
         if video_path and Path(video_path).exists():
-            await processing_msg.edit_text("✂️ Обрезаю видео...")
-
             # Trim video
+            await message.reply("✂️ Обрезаю видео...")
             trimmed_path = await video_processor.trim_video(
                 video_path, start_time, end_time
             )
@@ -388,18 +377,17 @@ async def handle_trim_from_memory(
                 max_size = 50 * 1024 * 1024  # 50MB
 
                 if file_size > max_size:
-                    await processing_msg.edit_text(
+                    await message.reply(
                         f"❌ Обрезанное видео слишком большое ({file_size // (1024*1024)}MB).\n"
                         f"Попробуйте меньший временной интервал."
                     )
                 else:
                     # Send trimmed video
-                    await processing_msg.edit_text("📤 Отправляю обрезанное видео...")
+                    await message.reply("📤 Отправляю видео в Telegram...")
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!\n\n(Из вашего предыдущего видео: {user_memory.title or 'Без названия'})",
                     )
-                    await processing_msg.delete()
 
                 # Clean up files
                 for path in [video_path, trimmed_path]:
@@ -411,13 +399,13 @@ async def handle_trim_from_memory(
                             logger.error(f"Error cleaning up file {path}: {e}")
 
             else:
-                await processing_msg.edit_text("❌ Не удалось обрезать видео.")
+                await message.reply("❌ Не удалось обрезать видео.")
         else:
-            await processing_msg.edit_text("❌ Не удалось скачать видео.")
+            await message.reply("❌ Не удалось скачать видео.")
 
     except Exception as e:
         logger.error(f"Error in trim from memory: {e}")
-        await processing_msg.edit_text("❌ Произошла ошибка при обработке видео.")
+        await message.reply("❌ Произошла ошибка при обработке видео.")
 
 
 async def handle_download_trim_action(
@@ -448,22 +436,8 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
     # Create progress callback
     progress_callback = await progress_callback_factory(message)
 
-    # Send initial processing message
-    processing_msg = await message.reply("⏳ Подготавливаю скачивание...")
-
+    video_info = None
     try:
-        # Get video info first
-        video_info = await video_processor.get_video_info(video_url)
-        if video_info:
-            info_text = (
-                f"📹 Найдено видео:\n"
-                f"🎬 {video_info['title']}\n"
-                f"👤 {video_info['uploader']}\n"
-                f"⏱️ {video_info['duration']} сек\n\n"
-                f"🔄 Начинаю скачивание..."
-            )
-            await processing_msg.edit_text(info_text)
-
         # Download video with progress updates
         video_path = await video_processor.download_video(video_url, progress_callback)
 
@@ -473,32 +447,34 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
             max_size = 50 * 1024 * 1024  # 50MB
 
             if file_size > max_size:
-                await processing_msg.edit_text(
+                await message.reply(
                     f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
                     f"Telegram ограничивает размер файла до 50MB."
                 )
-            else:
-                # Send video
-                await processing_msg.edit_text("📤 Отправляю видео...")
+                return
 
-                # Send video and save file_id for future use
-                sent_message = await message.reply_video(
-                    video=types.input_file.FSInputFile(video_path),
-                    caption="✅ Видео успешно скачано!",
+            # Send video
+            await message.reply("📤 Отправляю видео в Telegram...")
+
+            # Send video and save file_id for future use
+            sent_message = await message.reply_video(
+                video=types.input_file.FSInputFile(video_path),
+                caption="✅ Видео скачано и отправлено!",
+            )
+
+            # Save video info to memory (including file_id for future trims)
+            if sent_message.video:
+                # Get video info for memory if we don't have it
+                if not video_info:
+                    video_info = await video_processor.get_video_info(video_url)
+                video_memory.save_video_info(
+                    user_id=user.id,
+                    video_url=video_url,
+                    video_info=video_info,
+                    video_path=video_path,
+                    file_id=sent_message.video.file_id,
                 )
-
-                # Save video info to memory (including file_id for future trims)
-                if sent_message.video:
-                    video_memory.save_video_info(
-                        user_id=user.id,
-                        video_url=video_url,
-                        video_info=video_info,
-                        video_path=video_path,
-                        file_id=sent_message.video.file_id,
-                    )
-                    logger.info(f"Saved video to memory for user {user.id}")
-
-                await processing_msg.delete()
+                logger.info(f"Saved video to memory for user {user.id}")
 
             # Clean up file
             if Path(video_path).exists():
@@ -512,8 +488,8 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
             # Try to get video info to understand what went wrong
             video_info = await video_processor.get_video_info(video_url)
             if video_info:
-                await processing_msg.edit_text(
-                    f"❌ Видео найдено ({video_info['title']}), но скачать не удалось.\n\n"
+                await message.reply(
+                    f"❌ Видео найдено, но скачать не удалось.\n\n"
                     f"Возможные причины:\n"
                     f"• Видео доступно только авторизованным пользователям\n"
                     f"• Региональные ограничения\n"
@@ -521,14 +497,14 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
                     f"Попробуйте другую ссылку или позже."
                 )
             else:
-                await processing_msg.edit_text(
+                await message.reply(
                     "❌ Не удалось найти или скачать видео.\n"
                     "Проверьте правильность ссылки."
                 )
 
     except Exception as e:
         logger.error(f"Error in video download: {e}")
-        await processing_msg.edit_text("❌ Произошла ошибка при скачивании видео.")
+        await message.reply("❌ Произошла ошибка при скачивании видео.")
 
 
 async def handle_video_download_trim(
@@ -541,28 +517,16 @@ async def handle_video_download_trim(
         f"LLM-triggered download+trim from {user.id}: {video_url} ({start_time}s - {end_time}s)"
     )
 
-    # Start processing
-    processing_msg = await message.reply("⏳ Обрабатываю видео...")
+    # Create progress callback
+    progress_callback = await progress_callback_factory(message)
 
     try:
-        # Get video info first
-        video_info = await video_processor.get_video_info(video_url)
-        if video_info:
-            info_text = (
-                f"📹 Найдено видео:\n"
-                f"🎬 {video_info['title']}\n"
-                f"⏱️ Обрезка: {start_time}сек - {end_time}сек\n\n"
-                f"🔄 Начинаю скачивание..."
-            )
-            await processing_msg.edit_text(info_text)
-
         # Download video
         video_path = await video_processor.download_video(video_url, progress_callback)
 
         if video_path and Path(video_path).exists():
-            await processing_msg.edit_text("✂️ Обрезаю видео...")
-
             # Trim video
+            await message.reply("✂️ Обрезаю видео...")
             trimmed_path = await video_processor.trim_video(
                 video_path, start_time, end_time
             )
@@ -573,18 +537,17 @@ async def handle_video_download_trim(
                 max_size = 50 * 1024 * 1024  # 50MB
 
                 if file_size > max_size:
-                    await processing_msg.edit_text(
+                    await message.reply(
                         f"❌ Обрезанное видео слишком большое ({file_size // (1024*1024)}MB).\n"
                         f"Попробуйте меньший временной интервал."
                     )
                 else:
                     # Send trimmed video
-                    await processing_msg.edit_text("📤 Отправляю обрезанное видео...")
+                    await message.reply("📤 Отправляю видео в Telegram...")
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!",
                     )
-                    await processing_msg.delete()
 
                 # Clean up files
                 for path in [video_path, trimmed_path]:
@@ -596,17 +559,15 @@ async def handle_video_download_trim(
                             logger.error(f"Error cleaning up file {path}: {e}")
 
             else:
-                await processing_msg.edit_text(
+                await message.reply(
                     "❌ Не удалось обрезать видео. Проверьте временной интервал."
                 )
         else:
-            await processing_msg.edit_text(
-                "❌ Не удалось скачать видео. Проверьте ссылку."
-            )
+            await message.reply("❌ Не удалось скачать видео. Проверьте ссылку.")
 
     except Exception as e:
         logger.error(f"Error in video download+trim: {e}")
-        await processing_msg.edit_text("❌ Произошла ошибка при обработке видео.")
+        await message.reply("❌ Произошла ошибка при обработке видео.")
 
 
 async def handle_video_request(message: types.Message, text: str) -> None:
@@ -620,22 +581,13 @@ async def handle_video_request(message: types.Message, text: str) -> None:
 
     logger.info(f"Processing video request from {user.id}: {video_url}")
 
-    # Send processing message
-    processing_msg = await message.reply("⏳ Скачиваю видео...")
+    # Save video to memory after successful download
+    user_id = user.id
+
+    # Create progress callback
+    progress_callback = await progress_callback_factory(message)
 
     try:
-        # Get video info first
-        video_info = await video_processor.get_video_info(video_url)
-        if video_info:
-            info_text = (
-                f"📹 Найдено видео:\n"
-                f"🎬 {video_info['title']}\n"
-                f"👤 {video_info['uploader']}\n"
-                f"⏱️ {video_info['duration']} сек\n\n"
-                f"🔄 Начинаю скачивание..."
-            )
-            await processing_msg.edit_text(info_text)
-
         # Download video
         video_path = await video_processor.download_video(video_url, progress_callback)
 
@@ -645,18 +597,28 @@ async def handle_video_request(message: types.Message, text: str) -> None:
             max_size = 50 * 1024 * 1024  # 50MB
 
             if file_size > max_size:
-                await processing_msg.edit_text(
+                await message.reply(
                     f"❌ Видео слишком большое ({file_size // (1024*1024)}MB).\n"
                     f"Telegram ограничивает размер файла до 50MB."
                 )
             else:
                 # Send video
-                await processing_msg.edit_text("📤 Отправляю видео...")
-                await message.reply_video(
+                await message.reply("📤 Отправляю видео в Telegram...")
+                sent_message = await message.reply_video(
                     video=types.input_file.FSInputFile(video_path),
-                    caption="✅ Видео успешно скачано!",
+                    caption="✅ Видео скачано и отправлено!",
                 )
-                await processing_msg.delete()
+
+                # Save video to memory for future use
+                if sent_message.video:
+                    video_memory.save_video_info(
+                        user_id=user_id,
+                        video_url=video_url,
+                        video_info=None,
+                        video_path=video_path,
+                        file_id=sent_message.video.file_id,
+                    )
+                    logger.info(f"Saved video to memory for user {user_id}")
 
             # Clean up file
             if Path(video_path).exists():
@@ -667,13 +629,11 @@ async def handle_video_request(message: types.Message, text: str) -> None:
                     logger.error(f"Error cleaning up file {video_path}: {e}")
 
         else:
-            await processing_msg.edit_text(
-                "❌ Не удалось скачать видео. Проверьте ссылку."
-            )
+            await message.reply("❌ Не удалось скачать видео. Проверьте ссылку.")
 
     except Exception as e:
         logger.error(f"Error processing video request: {e}")
-        await processing_msg.edit_text("❌ Произошла ошибка при обработке видео.")
+        await message.reply("❌ Произошла ошибка при обработке видео.")
 
 
 async def handle_trim_request(message: types.Message, text: str) -> None:
@@ -703,6 +663,7 @@ async def handle_combined_request(
 ) -> None:
     """Handle combined download and trim request (legacy function)."""
     user = message.from_user
+    _ = user  # Mark user as used to avoid linter warning
 
     # Parse time range from text
     time_range = video_processor.parse_time_request(text)
@@ -719,28 +680,16 @@ async def handle_combined_request(
     start_time, end_time = time_range
     logger.info(f"Parsed time range for trimming: {start_time}s - {end_time}s")
 
-    # Start processing
-    processing_msg = await message.reply("⏳ Обрабатываю запрос на обрезку видео...")
+    # Create progress callback
+    progress_callback = await progress_callback_factory(message)
 
     try:
-        # Get video info first
-        video_info = await video_processor.get_video_info(video_url)
-        if video_info:
-            info_text = (
-                f"📹 Найдено видео:\n"
-                f"🎬 {video_info['title']}\n"
-                f"⏱️ Обрезка: {start_time}сек - {end_time}сек\n\n"
-                f"🔄 Начинаю скачивание и обрезку..."
-            )
-            await processing_msg.edit_text(info_text)
-
         # Download video
         video_path = await video_processor.download_video(video_url, progress_callback)
 
         if video_path and Path(video_path).exists():
-            await processing_msg.edit_text("✂️ Обрезаю видео...")
-
             # Trim video
+            await message.reply("✂️ Обрезаю видео...")
             trimmed_path = await video_processor.trim_video(
                 video_path, start_time, end_time
             )
@@ -751,18 +700,17 @@ async def handle_combined_request(
                 max_size = 50 * 1024 * 1024  # 50MB
 
                 if file_size > max_size:
-                    await processing_msg.edit_text(
+                    await message.reply(
                         f"❌ Обрезанное видео слишком большое ({file_size // (1024*1024)}MB).\n"
                         f"Попробуйте меньший временной интервал."
                     )
                 else:
                     # Send trimmed video
-                    await processing_msg.edit_text("📤 Отправляю обрезанное видео...")
+                    await message.reply("📤 Отправляю видео в Telegram...")
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!",
                     )
-                    await processing_msg.delete()
 
                 # Clean up files
                 for path in [video_path, trimmed_path]:
@@ -774,17 +722,15 @@ async def handle_combined_request(
                             logger.error(f"Error cleaning up file {path}: {e}")
 
             else:
-                await processing_msg.edit_text(
+                await message.reply(
                     "❌ Не удалось обрезать видео. Проверьте временной интервал."
                 )
         else:
-            await processing_msg.edit_text(
-                "❌ Не удалось скачать видео. Проверьте ссылку."
-            )
+            await message.reply("❌ Не удалось скачать видео. Проверьте ссылку.")
 
     except Exception as e:
         logger.error(f"Error processing combined request: {e}")
-        await processing_msg.edit_text(
+        await message.reply(
             "❌ Произошла ошибка при обработке запроса. Попробуйте еще раз."
         )
 
