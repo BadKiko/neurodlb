@@ -13,6 +13,7 @@ from typing import Optional
 import urllib.request
 import tarfile
 import zipfile
+import py7zr
 
 logger = logging.getLogger(__name__)
 
@@ -83,20 +84,9 @@ class LocalAPIServer:
             machine = platform.machine().lower()
 
             if system == "linux":
-                if "x86_64" in machine or "amd64" in machine:
-                    url = "https://github.com/tdlib/telegram-bot-api/releases/download/v7.0/telegram-bot-api-7.0-linux-x86_64.tar.gz"
-                else:
-                    url = "https://github.com/tdlib/telegram-bot-api/releases/download/v7.0/telegram-bot-api-7.0-linux-arm64.tar.gz"
-            elif system == "darwin":
-                if "arm64" in machine:
-                    url = "https://github.com/tdlib/telegram-bot-api/releases/download/v7.0/telegram-bot-api-7.0-darwin-arm64.tar.gz"
-                else:
-                    url = "https://github.com/tdlib/telegram-bot-api/releases/download/v7.0/telegram-bot-api-7.0-darwin-x86_64.tar.gz"
+                url = "https://github.com/jakbin/telegram-bot-api-binary/releases/download/2025-08-21glibc236/telegram-bot-api.zip"
             elif system == "windows":
-                if "amd64" in machine or "x86_64" in machine:
-                    url = "https://github.com/tdlib/telegram-bot-api/releases/download/v7.0/telegram-bot-api-7.0-win64.zip"
-                else:
-                    url = "https://github.com/tdlib/telegram-bot-api/releases/download/v7.0/telegram-bot-api-7.0-win32.zip"
+                url = "https://github.com/Bezdarnost01/telegram-bot-api-windows/releases/download/windows-build/build.7z"
             else:
                 logger.error(
                     f"Unsupported platform for auto-download: {system} {machine}"
@@ -106,27 +96,51 @@ class LocalAPIServer:
             logger.info(f"Downloading Telegram Bot API binary from {url}")
 
             # Download and extract
+            logger.info("Downloading file...")
+            temp_file_path = self.bin_dir / "temp_download"
+
+            # Download file with redirect handling
             with urllib.request.urlopen(url) as response:
-                if url.endswith(".tar.gz"):
-                    with tarfile.open(fileobj=response, mode="r|gz") as tar:
-                        # Extract only the binary
-                        for member in tar:
-                            if member.name.endswith(
-                                "telegram-bot-api"
-                            ) or member.name.endswith("telegram-bot-api.exe"):
-                                member.name = self.bin_path.name
-                                tar.extract(member, self.bin_dir)
-                                break
-                elif url.endswith(".zip"):
-                    with zipfile.ZipFile(response) as zf:
-                        for file_info in zf.filelist:
-                            if file_info.filename.endswith(
-                                "telegram-bot-api"
-                            ) or file_info.filename.endswith("telegram-bot-api.exe"):
-                                zf.extract(file_info, self.bin_dir)
-                                extracted_path = self.bin_dir / file_info.filename
-                                extracted_path.rename(self.bin_path)
-                                break
+                with open(temp_file_path, "wb") as f:
+                    f.write(response.read())
+
+            logger.info("Extracting archive...")
+
+            if url.endswith(".tar.gz"):
+                with tarfile.open(temp_file_path, mode="r:gz") as tar:
+                    # Extract only the binary
+                    for member in tar:
+                        if member.name.endswith(
+                            "telegram-bot-api"
+                        ) or member.name.endswith("telegram-bot-api.exe"):
+                            tar.extract(member, self.bin_dir)
+                            extracted_path = self.bin_dir / member.name
+                            extracted_path.rename(self.bin_path)
+                            break
+            elif url.endswith(".zip"):
+                with zipfile.ZipFile(temp_file_path) as zf:
+                    for file_info in zf.filelist:
+                        if file_info.filename.endswith(
+                            "telegram-bot-api"
+                        ) or file_info.filename.endswith("telegram-bot-api.exe"):
+                            zf.extract(file_info, self.bin_dir)
+                            extracted_path = self.bin_dir / file_info.filename
+                            extracted_path.rename(self.bin_path)
+                            break
+            elif url.endswith(".7z"):
+                # Extract .7z file
+                with py7zr.SevenZipFile(temp_file_path, mode="r") as zf:
+                    for file_info in zf.getnames():
+                        if file_info.endswith(
+                            "telegram-bot-api.exe"
+                        ) or file_info.endswith("telegram-bot-api"):
+                            zf.extract(self.bin_dir, [file_info])
+                            extracted_path = self.bin_dir / file_info
+                            extracted_path.rename(self.bin_path)
+                            break
+
+            # Clean up temp file
+            temp_file_path.unlink()
 
             # Make binary executable on Unix systems
             if system != "windows":
@@ -142,6 +156,26 @@ class LocalAPIServer:
 
         except Exception as e:
             logger.error(f"Error downloading binary: {e}")
+            logger.warning("Binary download failed. Alternatives:")
+            if system == "windows":
+                logger.warning("Windows options:")
+                logger.warning(
+                    "1. Download from: https://github.com/tdlib/telegram-bot-api (build from source)"
+                )
+                logger.warning(
+                    "2. Use Docker: docker run -p 8081:8081 aiogram/telegram-bot-api"
+                )
+                logger.warning(
+                    "3. Use standard Telegram API (50MB limit) - comment out TELEGRAM_BOT_API_URL in .env"
+                )
+                logger.warning("Place telegram-bot-api.exe in the bin/ folder")
+            else:
+                logger.warning(
+                    "Check: https://github.com/tdlib/telegram-bot-api/releases"
+                )
+                logger.warning(
+                    "Or build from source: https://github.com/tdlib/telegram-bot-api"
+                )
             return False
 
     async def start(self) -> bool:
@@ -154,9 +188,17 @@ class LocalAPIServer:
         try:
             # Download binary if needed
             if not self.bin_path.exists():
+                logger.info(
+                    f"Binary not found at {self.bin_path}, attempting to download..."
+                )
                 if not self._download_binary():
                     logger.error("Failed to download Telegram Bot API binary")
+                    logger.error(
+                        "Please download the binary manually and place it in the bin/ folder"
+                    )
                     return False
+            else:
+                logger.info(f"Using existing binary: {self.bin_path}")
 
             # Create data directory if it doesn't exist
             self.data_dir.mkdir(exist_ok=True)
@@ -168,14 +210,11 @@ class LocalAPIServer:
                 self.api_id,
                 "--api-hash",
                 self.api_hash,
+                "--local",  # Use local mode
                 "--http-port",
                 str(self.port),
                 "--dir",
                 str(self.data_dir),
-                "--max-file-size",
-                str(self.max_file_size),
-                "--max-connections",
-                str(self.max_connections),
                 "--verbosity",
                 "2",  # Info level logging
             ]

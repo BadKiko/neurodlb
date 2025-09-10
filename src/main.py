@@ -63,8 +63,12 @@ async def main():
 
             server_started = await local_api_server.start()
             if not server_started:
-                logger.error("Failed to start local API server")
-                sys.exit(1)
+                logger.warning(
+                    "Failed to start local API server - falling back to standard Telegram API"
+                )
+                logger.warning("File size limit will be 50MB instead of 2GB")
+                # Continue without local API server
+                local_api_server = None
 
         # Run the bot
         await run_bot()
