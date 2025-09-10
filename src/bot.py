@@ -858,10 +858,7 @@ async def run_bot() -> None:
         logger.info(f"Using local Telegram Bot API server: {TELEGRAM_BOT_API_URL}")
         # Create custom session with local API server and increased timeout
         session = AiohttpSession(
-            api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL),
-            timeout=aiohttp.ClientTimeout(
-                total=600
-            ),  # 10 minutes timeout for large files
+            api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL)
         )
         bot = Bot(
             token=TELEGRAM_BOT_TOKEN,
