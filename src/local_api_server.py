@@ -8,6 +8,7 @@ import logging
 import subprocess
 import sys
 import platform
+import os
 from pathlib import Path
 from typing import Optional
 import urllib.request
@@ -130,14 +131,22 @@ class LocalAPIServer:
             elif url.endswith(".7z"):
                 # Extract .7z file
                 with py7zr.SevenZipFile(temp_file_path, mode="r") as zf:
-                    for file_info in zf.getnames():
-                        if file_info.endswith(
-                            "telegram-bot-api.exe"
-                        ) or file_info.endswith("telegram-bot-api"):
-                            zf.extract(self.bin_dir, [file_info])
-                            extracted_path = self.bin_dir / file_info
-                            extracted_path.rename(self.bin_path)
-                            break
+                    zf.extractall(self.bin_dir)
+
+                    # Find the binary file (it might be in a subdirectory)
+                    for root, dirs, files in os.walk(self.bin_dir):
+                        for file in files:
+                            if file in ["telegram-bot-api.exe", "telegram-bot-api"]:
+                                source_path = Path(root) / file
+                                source_path.rename(self.bin_path)
+                                break
+
+                    # Clean up any subdirectories created during extraction
+                    for item in self.bin_dir.iterdir():
+                        if item.is_dir() and item != self.bin_dir:
+                            import shutil
+
+                            shutil.rmtree(item)
 
             # Clean up temp file
             temp_file_path.unlink()
