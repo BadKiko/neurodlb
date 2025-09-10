@@ -69,7 +69,7 @@ class VideoProcessor:
         return {
             "outtmpl": str(output_path / "%(title)s.%(ext)s"),
             "restrictfilenames": True,  # Sanitize filenames
-            "format": "best[height<=720]/best[height<=480]/best",  # Limit to 720p max
+            "format": "best",  # Download best available quality
             "noplaylist": True,  # Download single video, not playlist
             "quiet": False,  # Show output for debugging
             "no_warnings": False,  # Show warnings
@@ -80,11 +80,10 @@ class VideoProcessor:
             "no_check_certificates": False,  # Check SSL certificates
             "prefer_ffmpeg": True,  # Use ffmpeg for better compatibility
             "retries": 5,  # Number of retries
-            "fragment_retries": 5,  # Number of fragment retries
-            "concurrent_fragment_downloads": 4,  # Allow concurrent downloads for better speed
-            "http_chunk_size": 1048576,  # 1MB chunks for better performance
+            "fragment_retries": 5,  # Retry fragments
+            "http_chunk_size": 10485760,  # 10MB chunks for better stability
+            "concurrent_fragment_downloads": 3,  # Parallel fragment downloads
             "buffersize": 1024,  # Buffer size in KB
-            # Speed optimization
             "throttled_rate": None,  # No speed throttling
             "no_sleep": False,  # Allow sleeping but with longer intervals
             "sleep_interval": 0,  # No sleep between requests for better speed
@@ -415,7 +414,7 @@ class VideoProcessor:
                 except Exception as e:
                     logger.warning(f"Failed to get video duration: {e}")
 
-                # Compress video to reduce file size
+                # Compress video to reduce file size (only if needed)
                 try:
                     compressed_path = await self.compress_video(result)
                     if compressed_path:
@@ -425,6 +424,8 @@ class VideoProcessor:
                             result
                         )  # Rename compressed to original name
                         logger.info(f"Video compressed and replaced: {result}")
+                    else:
+                        logger.info("Video doesn't need compression, keeping original")
                 except Exception as e:
                     logger.warning(f"Failed to compress video: {e}")
 
@@ -563,6 +564,7 @@ class VideoProcessor:
     ) -> Optional[str]:
         """
         Compress video to reduce file size while maintaining good quality.
+        Only compresses if video is higher than 720p or file size is large.
 
         Args:
             video_path: Path to input video file
@@ -577,6 +579,41 @@ class VideoProcessor:
                 logger.error(f"Video file not found: {video_path}")
                 return None
 
+            # Get video dimensions and file size
+            dimensions = await self.get_video_dimensions(video_path)
+            original_size = video_path.stat().st_size
+            original_size_mb = original_size / (1024 * 1024)
+
+            logger.info(f"Original video size: {original_size_mb:.1f} MB")
+
+            # Check if compression is needed
+            should_compress = False
+            compression_reason = ""
+
+            if dimensions:
+                width, height = dimensions
+                if height > 720:
+                    should_compress = True
+                    compression_reason = f"height {height}p > 720p"
+                elif original_size_mb > 100:  # Compress if larger than 100MB
+                    should_compress = True
+                    compression_reason = f"file size {original_size_mb:.1f}MB > 100MB"
+            elif (
+                original_size_mb > 50
+            ):  # If we can't get dimensions, compress if > 50MB
+                should_compress = True
+                compression_reason = f"file size {original_size_mb:.1f}MB > 50MB"
+
+            if not should_compress:
+                logger.info(
+                    f"Video doesn't need compression: {compression_reason or 'size and quality are acceptable'}"
+                )
+                return None
+
+            logger.info(
+                f"Compressing video: {video_path.name} (reason: {compression_reason})"
+            )
+
             if output_path:
                 compressed_path = Path(output_path)
             else:
@@ -584,9 +621,19 @@ class VideoProcessor:
                     video_path.parent / f"{video_path.stem}_compressed.mp4"
                 )
 
-            # Get original file size
-            original_size = video_path.stat().st_size
-            logger.info(f"Original video size: {original_size / (1024*1024):.1f} MB")
+            # Determine compression settings based on original quality
+            if dimensions and dimensions[1] > 1080:
+                # High quality source - use better compression
+                crf = "23"
+                preset = "slow"
+            elif dimensions and dimensions[1] > 720:
+                # Medium quality source - balanced compression
+                crf = "25"
+                preset = "medium"
+            else:
+                # Lower quality source - lighter compression
+                crf = "28"
+                preset = "fast"
 
             # FFmpeg command for compression
             cmd = [
@@ -596,9 +643,9 @@ class VideoProcessor:
                 "-c:v",
                 "libx264",  # H.264 codec
                 "-crf",
-                "28",  # Constant Rate Factor (18-28 is good range, 28 is more compressed)
+                crf,  # Dynamic CRF based on source quality
                 "-preset",
-                "medium",  # Encoding speed vs compression efficiency
+                preset,  # Dynamic preset based on source quality
                 "-c:a",
                 "aac",  # Audio codec
                 "-b:a",
@@ -608,8 +655,6 @@ class VideoProcessor:
                 "-y",  # Overwrite output file
                 str(compressed_path),
             ]
-
-            logger.info(f"Compressing video: {video_path.name}")
 
             process = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
