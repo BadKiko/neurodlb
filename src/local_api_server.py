@@ -227,16 +227,18 @@ class LocalAPIServer:
             ]
 
             logger.info(f"Starting local Telegram Bot API server on port {self.port}")
+            logger.info("Server logs will be displayed in the console below:")
 
             # Start server in background
             logger.info(f"Running command: {' '.join(cmd)}")
             logger.info(f"Working directory: {self.bin_dir}")
 
             # For Windows, run from bin directory to find DLL dependencies
+            # Don't capture stdout/stderr to allow server logs to show in console
             self.process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=None,  # Allow logs to go to console
+                stderr=None,  # Allow logs to go to console
                 text=True,
                 cwd=self.bin_dir,  # Set working directory for DLL dependencies
             )
@@ -249,13 +251,11 @@ class LocalAPIServer:
                 logger.info("✅ Local Telegram Bot API server started successfully")
                 return True
             else:
-                stdout, stderr = self.process.communicate()
                 logger.error(
                     f"Failed to start server (exit code: {self.process.returncode})"
                 )
                 logger.error(f"Command: {' '.join(cmd)}")
-                logger.error(f"stdout: '{stdout}'")
-                logger.error(f"stderr: '{stderr}'")
+                logger.error("Server logs should be visible above in the console")
                 return False
 
         except Exception as e:
@@ -266,6 +266,7 @@ class LocalAPIServer:
         """Stop the local Telegram Bot API server."""
         if self.process:
             logger.info("Stopping local Telegram Bot API server...")
+            logger.info("You should see server shutdown logs in the console")
             self.process.terminate()
 
             try:
@@ -292,19 +293,6 @@ class LocalAPIServer:
         if not self.process:
             return "", ""
 
-        try:
-            # Read available output without blocking
-            if self.process.stdout:
-                stdout = await asyncio.to_thread(self.process.stdout.read)
-            else:
-                stdout = ""
-
-            if self.process.stderr:
-                stderr = await asyncio.to_thread(self.process.stderr.read)
-            else:
-                stderr = ""
-
-            return stdout, stderr
-        except Exception as e:
-            logger.error(f"Error reading server logs: {e}")
-            return "", ""
+        # Since we're not capturing stdout/stderr, logs go directly to console
+        logger.info("Server logs are displayed directly in the console")
+        return "", ""

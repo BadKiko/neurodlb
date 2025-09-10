@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import aiohttp
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -529,12 +530,16 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
                 thumbnail = types.input_file.FSInputFile(thumbnail_path)
 
             # Send video and save file_id for future use
+            logger.info(
+                f"Sending video file: {video_path} ({Path(video_path).stat().st_size} bytes)"
+            )
             sent_message = await message.reply_video(
                 video=types.input_file.FSInputFile(video_path),
                 caption="✅ Видео скачано и отправлено!",
                 supports_streaming=True,  # Enable streaming support
                 thumbnail=thumbnail,  # Add thumbnail if available
             )
+            logger.info("Video sent successfully")
 
             # Save video info to memory (including file_id for future trims)
             if sent_message.video:
@@ -851,8 +856,13 @@ async def run_bot() -> None:
     # Use local Bot API server if configured (allows files up to 2GB)
     if TELEGRAM_BOT_API_URL:
         logger.info(f"Using local Telegram Bot API server: {TELEGRAM_BOT_API_URL}")
-        # Create custom session with local API server
-        session = AiohttpSession(api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL))
+        # Create custom session with local API server and increased timeout
+        session = AiohttpSession(
+            api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL),
+            timeout=aiohttp.ClientTimeout(
+                total=600
+            ),  # 10 minutes timeout for large files
+        )
         bot = Bot(
             token=TELEGRAM_BOT_TOKEN,
             session=session,
