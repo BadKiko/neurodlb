@@ -448,11 +448,19 @@ async def handle_trim_from_memory(
                     if thumbnail_path.exists():
                         thumbnail = types.input_file.FSInputFile(thumbnail_path)
 
+                    # Get video dimensions for proper aspect ratio
+                    dimensions = await video_processor.get_video_dimensions(
+                        trimmed_path
+                    )
+                    width, height = dimensions if dimensions else (None, None)
+
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!\n\n(Из вашего предыдущего видео: {user_memory.title or 'Без названия'})",
                         supports_streaming=True,  # Enable streaming support
                         thumbnail=thumbnail,  # Add thumbnail if available
+                        width=width,  # Set video width for proper aspect ratio
+                        height=height,  # Set video height for proper aspect ratio
                     )
 
                 # Clean up files
@@ -529,6 +537,17 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
             if thumbnail_path.exists():
                 thumbnail = types.input_file.FSInputFile(thumbnail_path)
 
+            # Get video dimensions for proper aspect ratio
+            dimensions = await video_processor.get_video_dimensions(video_path)
+            width, height = dimensions if dimensions else (None, None)
+
+            if width and height:
+                logger.info(f"Video dimensions: {width}x{height}")
+            else:
+                logger.warning(
+                    "Could not get video dimensions, using default aspect ratio"
+                )
+
             # Send video and save file_id for future use
             logger.info(
                 f"Sending video file: {video_path} ({Path(video_path).stat().st_size} bytes)"
@@ -538,6 +557,8 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
                 caption="✅ Видео скачано и отправлено!",
                 supports_streaming=True,  # Enable streaming support
                 thumbnail=thumbnail,  # Add thumbnail if available
+                width=width,  # Set video width for proper aspect ratio
+                height=height,  # Set video height for proper aspect ratio
             )
             logger.info("Video sent successfully")
 
@@ -632,11 +653,19 @@ async def handle_video_download_trim(
                     if thumbnail_path.exists():
                         thumbnail = types.input_file.FSInputFile(thumbnail_path)
 
+                    # Get video dimensions for proper aspect ratio
+                    dimensions = await video_processor.get_video_dimensions(
+                        trimmed_path
+                    )
+                    width, height = dimensions if dimensions else (None, None)
+
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!",
                         supports_streaming=True,  # Enable streaming support
                         thumbnail=thumbnail,  # Add thumbnail if available
+                        width=width,  # Set video width for proper aspect ratio
+                        height=height,  # Set video height for proper aspect ratio
                     )
 
                 # Clean up files
@@ -703,11 +732,17 @@ async def handle_video_request(message: types.Message, text: str) -> None:
                 if thumbnail_path.exists():
                     thumbnail = types.input_file.FSInputFile(thumbnail_path)
 
+                # Get video dimensions for proper aspect ratio
+                dimensions = await video_processor.get_video_dimensions(video_path)
+                width, height = dimensions if dimensions else (None, None)
+
                 sent_message = await message.reply_video(
                     video=types.input_file.FSInputFile(video_path),
                     caption="✅ Видео скачано и отправлено!",
                     supports_streaming=True,  # Enable streaming support
                     thumbnail=thumbnail,  # Add thumbnail if available
+                    width=width,  # Set video width for proper aspect ratio
+                    height=height,  # Set video height for proper aspect ratio
                 )
 
                 # Save video to memory for future use
@@ -817,11 +852,19 @@ async def handle_combined_request(
                     if thumbnail_path.exists():
                         thumbnail = types.input_file.FSInputFile(thumbnail_path)
 
+                    # Get video dimensions for proper aspect ratio
+                    dimensions = await video_processor.get_video_dimensions(
+                        trimmed_path
+                    )
+                    width, height = dimensions if dimensions else (None, None)
+
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!",
                         supports_streaming=True,  # Enable streaming support
                         thumbnail=thumbnail,  # Add thumbnail if available
+                        width=width,  # Set video width for proper aspect ratio
+                        height=height,  # Set video height for proper aspect ratio
                     )
 
                 # Clean up files
@@ -857,9 +900,7 @@ async def run_bot() -> None:
     if TELEGRAM_BOT_API_URL:
         logger.info(f"Using local Telegram Bot API server: {TELEGRAM_BOT_API_URL}")
         # Create custom session with local API server and increased timeout
-        session = AiohttpSession(
-            api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL)
-        )
+        session = AiohttpSession(api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL))
         bot = Bot(
             token=TELEGRAM_BOT_TOKEN,
             session=session,

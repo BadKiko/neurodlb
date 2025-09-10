@@ -417,6 +417,65 @@ class VideoProcessor:
             logger.error(f"Error during video download: {e}")
             return None
 
+    async def get_video_dimensions(self, video_path: str) -> Optional[tuple[int, int]]:
+        """
+        Get video dimensions (width, height) using ffprobe.
+
+        Args:
+            video_path: Path to video file
+
+        Returns:
+            Tuple of (width, height) or None if failed
+        """
+        try:
+            video_path = Path(video_path)
+            if not video_path.exists():
+                logger.error(f"Video file not found: {video_path}")
+                return None
+
+            # Use ffprobe to get video dimensions
+            cmd = [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_streams",
+                str(video_path),
+            ]
+
+            logger.info(f"Getting video dimensions for {video_path.name}")
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                import json
+
+                data = json.loads(stdout.decode())
+
+                # Find video stream
+                for stream in data.get("streams", []):
+                    if stream.get("codec_type") == "video":
+                        width = stream.get("width")
+                        height = stream.get("height")
+                        if width and height:
+                            logger.info(f"Video dimensions: {width}x{height}")
+                            return (width, height)
+
+                logger.error("No video stream found in file")
+                return None
+            else:
+                logger.error(f"Failed to get video dimensions: {stderr.decode()}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error getting video dimensions: {e}")
+            return None
+
     async def generate_thumbnail(
         self, video_path: str, output_path: Optional[str] = None, time_offset: int = 5
     ) -> Optional[str]:
