@@ -507,6 +507,9 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
 
     logger.info(f"LLM-triggered download from {user.id}: {video_url}")
 
+    # Send initial status message
+    status_message = await message.reply("⏳ Скачиваю видео...")
+
     # Create progress callback
     progress_callback = await progress_callback_factory(message)
 
@@ -516,18 +519,21 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
         video_path = await video_processor.download_video(video_url, progress_callback)
 
         if video_path and Path(video_path).exists():
+            # Update status message
+            await status_message.edit_text("📦 Проверяю размер файла...")
+
             # Check file size
             file_size = Path(video_path).stat().st_size
             is_acceptable, size_message = check_file_size_for_telegram(file_size)
 
             if not is_acceptable:
-                await message.reply(size_message)
+                await status_message.edit_text(size_message)
                 return
             elif size_message:  # Warning message for large files
-                await message.reply(size_message)
+                await status_message.edit_text(size_message)
 
-            # Send video
-            await message.reply("📤 Отправляю видео в Telegram...")
+            # Update status message
+            await status_message.edit_text("📤 Отправляю видео в Telegram...")
 
             # Check for thumbnail
             thumbnail_path = (
@@ -561,6 +567,9 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
                 height=height,  # Set video height for proper aspect ratio
             )
             logger.info("Video sent successfully")
+
+            # Delete status message after successful send
+            await status_message.delete()
 
             # Save video info to memory (including file_id for future trims)
             if sent_message.video:
@@ -617,6 +626,9 @@ async def handle_video_download_trim(
         f"LLM-triggered download+trim from {user.id}: {video_url} ({start_time}s - {end_time}s)"
     )
 
+    # Send initial status message
+    status_message = await message.reply("⏳ Скачиваю видео...")
+
     # Create progress callback
     progress_callback = await progress_callback_factory(message)
 
@@ -625,25 +637,28 @@ async def handle_video_download_trim(
         video_path = await video_processor.download_video(video_url, progress_callback)
 
         if video_path and Path(video_path).exists():
-            # Trim video
-            await message.reply("✂️ Обрезаю видео...")
+            # Update status message
+            await status_message.edit_text("✂️ Обрезаю видео...")
             trimmed_path = await video_processor.trim_video(
                 video_path, start_time, end_time
             )
 
             if trimmed_path and Path(trimmed_path).exists():
+                # Update status message
+                await status_message.edit_text("📦 Проверяю размер файла...")
+
                 # Check file size
                 file_size = Path(trimmed_path).stat().st_size
                 is_acceptable, size_message = check_file_size_for_telegram(file_size)
 
                 if not is_acceptable:
-                    await message.reply(size_message)
+                    await status_message.edit_text(size_message)
                 elif size_message:  # Warning message for large files
-                    await message.reply(size_message)
+                    await status_message.edit_text(size_message)
 
                 if is_acceptable:
-                    # Send trimmed video
-                    await message.reply("📤 Отправляю видео в Telegram...")
+                    # Update status message
+                    await status_message.edit_text("📤 Отправляю видео в Telegram...")
                     # Check for thumbnail
                     thumbnail_path = (
                         Path(trimmed_path).parent
@@ -667,6 +682,9 @@ async def handle_video_download_trim(
                         width=width,  # Set video width for proper aspect ratio
                         height=height,  # Set video height for proper aspect ratio
                     )
+
+                    # Delete status message after successful send
+                    await status_message.delete()
 
                 # Clean up files
                 for path in [video_path, trimmed_path]:

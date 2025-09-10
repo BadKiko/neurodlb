@@ -69,7 +69,7 @@ class VideoProcessor:
         return {
             "outtmpl": str(output_path / "%(title)s.%(ext)s"),
             "restrictfilenames": True,  # Sanitize filenames
-            "format": "best/bestvideo+bestaudio/best",  # Best quality with fallbacks
+            "format": "best[height<=720]/best[height<=480]/best",  # Limit to 720p max
             "noplaylist": True,  # Download single video, not playlist
             "quiet": False,  # Show output for debugging
             "no_warnings": False,  # Show warnings
@@ -400,6 +400,19 @@ class VideoProcessor:
             if result:
                 logger.info(f"Video successfully downloaded: {result}")
 
+                # Compress video to reduce file size
+                try:
+                    compressed_path = await self.compress_video(result)
+                    if compressed_path:
+                        # Replace original with compressed version
+                        Path(result).unlink()  # Delete original
+                        Path(compressed_path).rename(
+                            result
+                        )  # Rename compressed to original name
+                        logger.info(f"Video compressed and replaced: {result}")
+                except Exception as e:
+                    logger.warning(f"Failed to compress video: {e}")
+
                 # Generate thumbnail for the downloaded video
                 try:
                     thumbnail_path = await self.generate_thumbnail(result)
@@ -474,6 +487,84 @@ class VideoProcessor:
 
         except Exception as e:
             logger.error(f"Error getting video dimensions: {e}")
+            return None
+
+    async def compress_video(
+        self, video_path: str, output_path: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Compress video to reduce file size while maintaining good quality.
+
+        Args:
+            video_path: Path to input video file
+            output_path: Path for compressed video output (optional)
+
+        Returns:
+            Path to compressed video file or None if failed
+        """
+        try:
+            video_path = Path(video_path)
+            if not video_path.exists():
+                logger.error(f"Video file not found: {video_path}")
+                return None
+
+            if output_path:
+                compressed_path = Path(output_path)
+            else:
+                compressed_path = (
+                    video_path.parent / f"{video_path.stem}_compressed.mp4"
+                )
+
+            # Get original file size
+            original_size = video_path.stat().st_size
+            logger.info(f"Original video size: {original_size / (1024*1024):.1f} MB")
+
+            # FFmpeg command for compression
+            cmd = [
+                "ffmpeg",
+                "-i",
+                str(video_path),
+                "-c:v",
+                "libx264",  # H.264 codec
+                "-crf",
+                "28",  # Constant Rate Factor (18-28 is good range, 28 is more compressed)
+                "-preset",
+                "medium",  # Encoding speed vs compression efficiency
+                "-c:a",
+                "aac",  # Audio codec
+                "-b:a",
+                "128k",  # Audio bitrate
+                "-movflags",
+                "+faststart",  # Optimize for streaming
+                "-y",  # Overwrite output file
+                str(compressed_path),
+            ]
+
+            logger.info(f"Compressing video: {video_path.name}")
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                if compressed_path.exists():
+                    compressed_size = compressed_path.stat().st_size
+                    compression_ratio = (1 - compressed_size / original_size) * 100
+                    logger.info(
+                        f"Video compressed successfully: {compressed_size / (1024*1024):.1f} MB ({compression_ratio:.1f}% reduction)"
+                    )
+                    return str(compressed_path)
+                else:
+                    logger.error("Compression completed but output file not found")
+                    return None
+            else:
+                logger.error(f"Video compression failed: {stderr.decode()}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error compressing video: {e}")
             return None
 
     async def generate_thumbnail(
