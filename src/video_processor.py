@@ -74,6 +74,7 @@ class VideoProcessor:
             "quiet": False,  # Show output for debugging
             "no_warnings": False,  # Show warnings
             "extract_flat": False,
+            "min_duration": 5,  # Minimum video duration in seconds
             # Additional options to bypass restrictions
             "ignoreerrors": True,  # Ignore errors and try to continue
             "no_check_certificates": False,  # Check SSL certificates
@@ -400,6 +401,20 @@ class VideoProcessor:
             if result:
                 logger.info(f"Video successfully downloaded: {result}")
 
+                # Check video duration to ensure it's long enough
+                try:
+                    duration = await self.get_video_duration(result)
+                    if duration and duration < 5:
+                        logger.warning(
+                            f"Video too short ({duration}s), skipping: {result}"
+                        )
+                        Path(result).unlink()  # Delete short video
+                        return None
+                    elif duration:
+                        logger.info(f"Video duration: {duration}s")
+                except Exception as e:
+                    logger.warning(f"Failed to get video duration: {e}")
+
                 # Compress video to reduce file size
                 try:
                     compressed_path = await self.compress_video(result)
@@ -428,6 +443,60 @@ class VideoProcessor:
 
         except Exception as e:
             logger.error(f"Error during video download: {e}")
+            return None
+
+    async def get_video_duration(self, video_path: str) -> Optional[float]:
+        """
+        Get video duration in seconds using ffprobe.
+
+        Args:
+            video_path: Path to video file
+
+        Returns:
+            Duration in seconds or None if failed
+        """
+        try:
+            video_path = Path(video_path)
+            if not video_path.exists():
+                logger.error(f"Video file not found: {video_path}")
+                return None
+
+            # Use ffprobe to get video duration
+            cmd = [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_format",
+                str(video_path),
+            ]
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                import json
+
+                data = json.loads(stdout.decode())
+                duration = data.get("format", {}).get("duration")
+
+                if duration:
+                    duration_float = float(duration)
+                    logger.info(f"Video duration: {duration_float:.1f}s")
+                    return duration_float
+                else:
+                    logger.error("No duration found in video file")
+                    return None
+            else:
+                logger.error(f"ffprobe failed: {stderr.decode()}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error getting video duration: {e}")
             return None
 
     async def get_video_dimensions(self, video_path: str) -> Optional[tuple[int, int]]:
