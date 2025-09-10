@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import yt_dlp
 
-from config import TEMP_DIR, MAX_VIDEO_DURATION, MAX_FILE_SIZE_MB
+from config import TEMP_DIR, MAX_VIDEO_DURATION, MAX_FILE_SIZE_MB, get_proxy_settings
 from video_source_handler import VideoSourceHandler
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class VideoProcessor:
         Returns:
             Dictionary with yt-dlp options
         """
-        return {
+        options = {
             "outtmpl": str(output_path / "%(title)s.%(ext)s"),
             "restrictfilenames": True,  # Sanitize filenames
             "format": "best",  # Download best available quality
@@ -129,6 +129,16 @@ class VideoProcessor:
                 "Range": "bytes=0-",
             },
         }
+
+        # Add proxy settings if configured
+        proxy_settings = get_proxy_settings()
+        if proxy_settings:
+            proxy_url = proxy_settings.get("https") or proxy_settings.get("http")
+            if proxy_url:
+                logger.info(f"Using proxy for yt-dlp: {proxy_url[:20]}...")
+                options["proxy"] = proxy_url
+
+        return options
 
     async def _download_with_yt_dlp(self, url: str, output_path: Path) -> Optional[str]:
         """
@@ -769,7 +779,17 @@ class VideoProcessor:
                 return None
 
             def extract_info():
-                with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+                # Get proxy settings for info extraction
+                proxy_settings = get_proxy_settings()
+                options = {"quiet": True}
+                if proxy_settings:
+                    proxy_url = proxy_settings.get("https") or proxy_settings.get(
+                        "http"
+                    )
+                    if proxy_url:
+                        options["proxy"] = proxy_url
+
+                with yt_dlp.YoutubeDL(options) as ydl:
                     return ydl.extract_info(url, download=False)
 
             info = await asyncio.to_thread(extract_info)

@@ -16,6 +16,8 @@ import tarfile
 import zipfile
 import py7zr
 
+from config import get_proxy_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -99,6 +101,24 @@ class LocalAPIServer:
             # Download and extract
             logger.info("Downloading file...")
             temp_file_path = self.bin_dir / "temp_download"
+
+            # Get proxy settings
+            proxy_settings = get_proxy_settings()
+
+            # Create proxy handler if proxy is configured
+            proxy_handler = None
+            if proxy_settings:
+                proxy_url = proxy_settings.get("https") or proxy_settings.get("http")
+                if proxy_url:
+                    logger.info(f"Using proxy for download: {proxy_url[:20]}...")
+                    proxy_handler = urllib.request.ProxyHandler(
+                        {"http": proxy_url, "https": proxy_url}
+                    )
+
+            # Create opener with proxy if needed
+            if proxy_handler:
+                opener = urllib.request.build_opener(proxy_handler)
+                urllib.request.install_opener(opener)
 
             # Download file with redirect handling
             with urllib.request.urlopen(url) as response:
@@ -225,6 +245,17 @@ class LocalAPIServer:
                 "--verbosity",
                 "2",  # Info level logging
             ]
+
+            # Add proxy settings if configured
+            proxy_settings = get_proxy_settings()
+            if proxy_settings:
+                proxy_url = proxy_settings.get("https") or proxy_settings.get("http")
+                if proxy_url:
+                    logger.info(
+                        f"Adding proxy to telegram-bot-api: {proxy_url[:20]}..."
+                    )
+                    # telegram-bot-api supports --proxy parameter
+                    cmd.extend(["--proxy", proxy_url])
 
             logger.info(f"Starting local Telegram Bot API server on port {self.port}")
             logger.info("Server logs will be displayed in the console below:")

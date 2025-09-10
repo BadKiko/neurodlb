@@ -24,6 +24,11 @@ TELEGRAM_API_HASH: Optional[str] = os.getenv("TELEGRAM_API_HASH")
 # Mistral API settings
 MISTRAL_API_KEY: Optional[str] = os.getenv("MISTRAL_API_KEY")
 
+# Proxy settings
+HTTPS_PROXY: Optional[str] = os.getenv("HTTPS_PROXY")
+HTTP_PROXY: Optional[str] = os.getenv("HTTP_PROXY")
+SOCKS_PROXY: Optional[str] = os.getenv("SOCKS_PROXY")
+
 # Video processing settings
 MAX_VIDEO_DURATION: int = int(os.getenv("MAX_VIDEO_DURATION", "600"))  # 10 minutes
 MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "2048"))  # 2GB for local API
@@ -31,6 +36,48 @@ MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "2048"))  # 2GB for lo
 # Logging settings
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE: str = os.getenv("LOG_FILE", "bot.log")
+
+
+def get_proxy_settings() -> dict:
+    """
+    Get proxy settings for different components.
+
+    Returns:
+        dict: Proxy configuration for different protocols
+    """
+    proxy_settings = {}
+
+    # HTTPS proxy (for most HTTP requests)
+    if HTTPS_PROXY:
+        proxy_settings["https"] = HTTPS_PROXY
+        proxy_settings["http"] = HTTPS_PROXY  # Use HTTPS proxy for HTTP too
+
+    # HTTP proxy (if specified separately)
+    if HTTP_PROXY:
+        proxy_settings["http"] = HTTP_PROXY
+
+    # SOCKS proxy (if specified)
+    if SOCKS_PROXY:
+        proxy_settings["socks5"] = SOCKS_PROXY
+
+    return proxy_settings
+
+
+def get_telegram_proxy_url() -> Optional[str]:
+    """
+    Get proxy URL for Telegram Bot API.
+
+    Returns:
+        str: Proxy URL for Telegram or None if no proxy configured
+    """
+    # Priority: HTTPS_PROXY > HTTP_PROXY > SOCKS_PROXY
+    if HTTPS_PROXY:
+        return HTTPS_PROXY
+    elif HTTP_PROXY:
+        return HTTP_PROXY
+    elif SOCKS_PROXY:
+        return SOCKS_PROXY
+    return None
 
 
 def validate_config() -> None:

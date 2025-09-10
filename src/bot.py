@@ -17,7 +17,12 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_API_URL, MISTRAL_API_KEY
+from config import (
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_BOT_API_URL,
+    MISTRAL_API_KEY,
+    get_telegram_proxy_url,
+)
 from video_processor import VideoProcessor
 from llm_handler import LLMHandler
 
@@ -936,12 +941,23 @@ async def run_bot() -> None:
     if not TELEGRAM_BOT_TOKEN:
         raise ValueError("TELEGRAM_BOT_TOKEN is not set")
 
+    # Get proxy settings
+    proxy_url = get_telegram_proxy_url()
+    if proxy_url:
+        logger.info(
+            f"Using proxy: {proxy_url[:20]}..."
+        )  # Log only first 20 chars for security
+    else:
+        logger.info("No proxy configured")
+
     # Create bot and dispatcher
     # Use local Bot API server if configured (allows files up to 2GB)
     if TELEGRAM_BOT_API_URL:
         logger.info(f"Using local Telegram Bot API server: {TELEGRAM_BOT_API_URL}")
-        # Create custom session with local API server and increased timeout
-        session = AiohttpSession(api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL))
+        # Create custom session with local API server and proxy
+        session = AiohttpSession(
+            api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL), proxy=proxy_url
+        )
         bot = Bot(
             token=TELEGRAM_BOT_TOKEN,
             session=session,
@@ -949,8 +965,11 @@ async def run_bot() -> None:
         )
         logger.info("✅ Local Bot API enabled - file size limit increased to 2GB!")
     else:
+        # Create session with proxy for standard API
+        session = AiohttpSession(proxy=proxy_url) if proxy_url else None
         bot = Bot(
             token=TELEGRAM_BOT_TOKEN,
+            session=session,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
     dp = Dispatcher()
