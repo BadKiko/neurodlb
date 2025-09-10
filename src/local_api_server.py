@@ -186,6 +186,15 @@ class LocalAPIServer:
             True if server started successfully, False otherwise
         """
         try:
+            # Check API credentials
+            if not self.api_id or not self.api_hash:
+                logger.error("TELEGRAM_API_ID and TELEGRAM_API_HASH are required")
+                logger.error("Get them from: https://my.telegram.org/auth")
+                return False
+
+            logger.info(f"API ID: {self.api_id[:10]}...")
+            logger.info(f"API Hash: {self.api_hash[:10]}...")
+
             # Download binary if needed
             if not self.bin_path.exists():
                 logger.info(
@@ -222,6 +231,7 @@ class LocalAPIServer:
             logger.info(f"Starting local Telegram Bot API server on port {self.port}")
 
             # Start server in background
+            logger.info(f"Running command: {' '.join(cmd)}")
             self.process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
@@ -236,8 +246,11 @@ class LocalAPIServer:
             else:
                 stdout, stderr = self.process.communicate()
                 logger.error(
-                    f"Failed to start server. stdout: {stdout}, stderr: {stderr}"
+                    f"Failed to start server (exit code: {self.process.returncode})"
                 )
+                logger.error(f"Command: {' '.join(cmd)}")
+                logger.error(f"stdout: '{stdout}'")
+                logger.error(f"stderr: '{stderr}'")
                 return False
 
         except Exception as e:
