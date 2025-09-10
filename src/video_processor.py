@@ -355,13 +355,16 @@ class VideoProcessor:
         logger.error("All fallback formats failed")
         return None
 
-    async def download_video(self, url: str, progress_callback=None) -> Optional[str]:
+    async def download_video(
+        self, url: str, progress_callback=None, status_callback=None
+    ) -> Optional[str]:
         """
         Download video from URL using four-stage approach.
 
         Args:
             url: Video URL to download
             progress_callback: Optional callback function for progress updates
+            status_callback: Optional callback for status updates (for UI)
 
         Returns:
             Path to downloaded video file or None if failed
@@ -416,8 +419,14 @@ class VideoProcessor:
 
                 # Compress video to reduce file size (only if needed)
                 try:
+                    if status_callback:
+                        await status_callback("📦 Проверяю необходимость сжатия...")
+
                     compressed_path = await self.compress_video(result)
                     if compressed_path:
+                        if status_callback:
+                            await status_callback("🗜️ Сжимаю видео...")
+
                         # Replace original with compressed version
                         Path(result).unlink()  # Delete original
                         Path(compressed_path).rename(
@@ -431,6 +440,9 @@ class VideoProcessor:
 
                 # Generate thumbnail for the downloaded video
                 try:
+                    if status_callback:
+                        await status_callback("🖼️ Создаю превью...")
+
                     thumbnail_path = await self.generate_thumbnail(result)
                     if thumbnail_path:
                         logger.info(f"Thumbnail generated: {thumbnail_path}")

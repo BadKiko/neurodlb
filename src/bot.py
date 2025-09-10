@@ -348,7 +348,9 @@ async def handle_llm_request(message: types.Message, text: str) -> None:
             await message.reply("Привет! 🤖")
 
 
-async def progress_callback_factory(message: types.Message):
+async def progress_callback_factory(
+    message: types.Message, status_message: types.Message = None
+):
     """Create progress callback function for video processing."""
 
     async def progress_callback(text: str):
@@ -356,7 +358,15 @@ async def progress_callback_factory(message: types.Message):
         logger.debug(f"Progress: {text}")
         pass
 
-    return progress_callback
+    async def status_callback(text: str):
+        # Update status message if provided
+        if status_message:
+            try:
+                await status_message.edit_text(text)
+            except Exception as e:
+                logger.warning(f"Failed to update status message: {e}")
+
+    return progress_callback, status_callback
 
 
 async def handle_download_action(message: types.Message, video_url: str) -> None:
@@ -364,9 +374,6 @@ async def handle_download_action(message: types.Message, video_url: str) -> None
     if not video_url:
         await message.reply("❌ Не найдена ссылка на видео")
         return
-
-    # Notify user about processing
-    await message.reply("⏳ Загружаю видео...")
 
     await handle_video_download(message, video_url)
 
@@ -514,13 +521,17 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
     # Send initial status message
     status_message = await message.reply("⏳ Скачиваю видео...")
 
-    # Create progress callback
-    progress_callback = await progress_callback_factory(message)
+    # Create progress and status callbacks
+    progress_callback, status_callback = await progress_callback_factory(
+        message, status_message
+    )
 
     video_info = None
     try:
         # Download video with progress updates
-        video_path = await video_processor.download_video(video_url, progress_callback)
+        video_path = await video_processor.download_video(
+            video_url, progress_callback, status_callback
+        )
 
         if video_path and Path(video_path).exists():
             # Update status message
@@ -637,12 +648,16 @@ async def handle_video_download_trim(
     # Send initial status message
     status_message = await message.reply("⏳ Скачиваю видео...")
 
-    # Create progress callback
-    progress_callback = await progress_callback_factory(message)
+    # Create progress and status callbacks
+    progress_callback, status_callback = await progress_callback_factory(
+        message, status_message
+    )
 
     try:
         # Download video
-        video_path = await video_processor.download_video(video_url, progress_callback)
+        video_path = await video_processor.download_video(
+            video_url, progress_callback, status_callback
+        )
 
         if video_path and Path(video_path).exists():
             # Update status message
