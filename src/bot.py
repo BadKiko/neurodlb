@@ -438,9 +438,20 @@ async def handle_trim_from_memory(
                 if is_acceptable:
                     # Send trimmed video
                     await message.reply("📤 Отправляю видео в Telegram...")
+                    # Check for thumbnail
+                    thumbnail_path = (
+                        Path(trimmed_path).parent
+                        / f"{Path(trimmed_path).stem}_thumb.jpg"
+                    )
+                    thumbnail = None
+                    if thumbnail_path.exists():
+                        thumbnail = types.input_file.FSInputFile(thumbnail_path)
+
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!\n\n(Из вашего предыдущего видео: {user_memory.title or 'Без названия'})",
+                        supports_streaming=True,  # Enable streaming support
+                        thumbnail=thumbnail,  # Add thumbnail if available
                     )
 
                 # Clean up files
@@ -509,10 +520,20 @@ async def handle_video_download(message: types.Message, video_url: str) -> None:
             # Send video
             await message.reply("📤 Отправляю видео в Telegram...")
 
+            # Check for thumbnail
+            thumbnail_path = (
+                Path(video_path).parent / f"{Path(video_path).stem}_thumb.jpg"
+            )
+            thumbnail = None
+            if thumbnail_path.exists():
+                thumbnail = types.input_file.FSInputFile(thumbnail_path)
+
             # Send video and save file_id for future use
             sent_message = await message.reply_video(
                 video=types.input_file.FSInputFile(video_path),
                 caption="✅ Видео скачано и отправлено!",
+                supports_streaming=True,  # Enable streaming support
+                thumbnail=thumbnail,  # Add thumbnail if available
             )
 
             # Save video info to memory (including file_id for future trims)
@@ -597,9 +618,20 @@ async def handle_video_download_trim(
                 if is_acceptable:
                     # Send trimmed video
                     await message.reply("📤 Отправляю видео в Telegram...")
+                    # Check for thumbnail
+                    thumbnail_path = (
+                        Path(trimmed_path).parent
+                        / f"{Path(trimmed_path).stem}_thumb.jpg"
+                    )
+                    thumbnail = None
+                    if thumbnail_path.exists():
+                        thumbnail = types.input_file.FSInputFile(thumbnail_path)
+
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!",
+                        supports_streaming=True,  # Enable streaming support
+                        thumbnail=thumbnail,  # Add thumbnail if available
                     )
 
                 # Clean up files
@@ -658,9 +690,19 @@ async def handle_video_request(message: types.Message, text: str) -> None:
             if is_acceptable:
                 # Send video
                 await message.reply("📤 Отправляю видео в Telegram...")
+                # Check for thumbnail
+                thumbnail_path = (
+                    Path(video_path).parent / f"{Path(video_path).stem}_thumb.jpg"
+                )
+                thumbnail = None
+                if thumbnail_path.exists():
+                    thumbnail = types.input_file.FSInputFile(thumbnail_path)
+
                 sent_message = await message.reply_video(
                     video=types.input_file.FSInputFile(video_path),
                     caption="✅ Видео скачано и отправлено!",
+                    supports_streaming=True,  # Enable streaming support
+                    thumbnail=thumbnail,  # Add thumbnail if available
                 )
 
                 # Save video to memory for future use
@@ -761,9 +803,20 @@ async def handle_combined_request(
                 if is_acceptable:
                     # Send trimmed video
                     await message.reply("📤 Отправляю видео в Telegram...")
+                    # Check for thumbnail
+                    thumbnail_path = (
+                        Path(trimmed_path).parent
+                        / f"{Path(trimmed_path).stem}_thumb.jpg"
+                    )
+                    thumbnail = None
+                    if thumbnail_path.exists():
+                        thumbnail = types.input_file.FSInputFile(thumbnail_path)
+
                     await message.reply_video(
                         video=types.input_file.FSInputFile(trimmed_path),
                         caption=f"✅ Видео обрезано с {start_time} по {end_time} секунду!",
+                        supports_streaming=True,  # Enable streaming support
+                        thumbnail=thumbnail,  # Add thumbnail if available
                     )
 
                 # Clean up files

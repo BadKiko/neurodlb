@@ -399,6 +399,15 @@ class VideoProcessor:
 
             if result:
                 logger.info(f"Video successfully downloaded: {result}")
+
+                # Generate thumbnail for the downloaded video
+                try:
+                    thumbnail_path = await self.generate_thumbnail(result)
+                    if thumbnail_path:
+                        logger.info(f"Thumbnail generated: {thumbnail_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to generate thumbnail: {e}")
+
                 return result
             else:
                 logger.error("Video download failed")
@@ -406,6 +415,67 @@ class VideoProcessor:
 
         except Exception as e:
             logger.error(f"Error during video download: {e}")
+            return None
+
+    async def generate_thumbnail(
+        self, video_path: str, output_path: Optional[str] = None, time_offset: int = 5
+    ) -> Optional[str]:
+        """
+        Generate thumbnail from video at specified time offset.
+
+        Args:
+            video_path: Path to video file
+            output_path: Path for thumbnail output (optional)
+            time_offset: Time offset in seconds for thumbnail
+
+        Returns:
+            Path to generated thumbnail or None if failed
+        """
+        try:
+            video_path = Path(video_path)
+            if not video_path.exists():
+                logger.error(f"Video file not found: {video_path}")
+                return None
+
+            if output_path:
+                thumbnail_path = Path(output_path)
+            else:
+                thumbnail_path = video_path.parent / f"{video_path.stem}_thumb.jpg"
+
+            # Generate thumbnail using ffmpeg
+            cmd = [
+                "ffmpeg",
+                "-i",
+                str(video_path),
+                "-ss",
+                str(time_offset),  # Seek to time offset
+                "-vframes",
+                "1",  # Extract one frame
+                "-q:v",
+                "2",  # Quality setting (2 = high quality)
+                "-vf",
+                "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2",  # Scale and pad
+                "-y",  # Overwrite output file
+                str(thumbnail_path),
+            ]
+
+            logger.info(f"Generating thumbnail for {video_path.name} at {time_offset}s")
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                logger.info(f"Thumbnail generated successfully: {thumbnail_path}")
+                return str(thumbnail_path)
+            else:
+                logger.error(f"Failed to generate thumbnail: {stderr.decode()}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error generating thumbnail: {e}")
             return None
 
     async def get_video_info(self, url: str) -> Optional[dict]:
