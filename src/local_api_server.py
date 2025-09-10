@@ -66,7 +66,7 @@ class LocalAPIServer:
             else:
                 return "telegram-bot-api"
         elif system == "windows":
-            return "telegram-bot-api.exe"
+            return "build/telegram-bot-api.exe"
 
         raise RuntimeError(f"Unsupported platform: {system} {machine}")
 
@@ -129,24 +129,12 @@ class LocalAPIServer:
                             extracted_path.rename(self.bin_path)
                             break
             elif url.endswith(".7z"):
-                # Extract .7z file
+                # Extract .7z file (contains full directory structure for Windows)
                 with py7zr.SevenZipFile(temp_file_path, mode="r") as zf:
                     zf.extractall(self.bin_dir)
 
-                    # Find the binary file (it might be in a subdirectory)
-                    for root, dirs, files in os.walk(self.bin_dir):
-                        for file in files:
-                            if file in ["telegram-bot-api.exe", "telegram-bot-api"]:
-                                source_path = Path(root) / file
-                                source_path.rename(self.bin_path)
-                                break
-
-                    # Clean up any subdirectories created during extraction
-                    for item in self.bin_dir.iterdir():
-                        if item.is_dir() and item != self.bin_dir:
-                            import shutil
-
-                            shutil.rmtree(item)
+                # For Windows .7z, the binary is in build/telegram-bot-api.exe
+                # All dependencies (DLLs) should remain in the build folder
 
             # Clean up temp file
             temp_file_path.unlink()
@@ -157,7 +145,8 @@ class LocalAPIServer:
 
             # Verify the binary was extracted successfully
             if not self.bin_path.exists():
-                logger.error("Failed to extract binary from archive")
+                logger.error(f"Binary not found at {self.bin_path}")
+                logger.error("Archive may not contain the expected binary")
                 return False
 
             logger.info(f"Binary downloaded and extracted to {self.bin_path}")
@@ -241,8 +230,15 @@ class LocalAPIServer:
 
             # Start server in background
             logger.info(f"Running command: {' '.join(cmd)}")
+            logger.info(f"Working directory: {self.bin_dir}")
+
+            # For Windows, run from bin directory to find DLL dependencies
             self.process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=self.bin_dir,  # Set working directory for DLL dependencies
             )
 
             # Wait a moment for server to start
