@@ -16,7 +16,7 @@ import tarfile
 import zipfile
 import py7zr
 
-from config import get_proxy_settings
+# Proxy support removed - no longer needed
 
 logger = logging.getLogger(__name__)
 
@@ -102,23 +102,7 @@ class LocalAPIServer:
             logger.info("Downloading file...")
             temp_file_path = self.bin_dir / "temp_download"
 
-            # Get proxy settings
-            proxy_settings = get_proxy_settings()
-
-            # Create proxy handler if proxy is configured
-            proxy_handler = None
-            if proxy_settings:
-                proxy_url = proxy_settings.get("https") or proxy_settings.get("http")
-                if proxy_url:
-                    logger.info(f"Using proxy for download: {proxy_url[:20]}...")
-                    proxy_handler = urllib.request.ProxyHandler(
-                        {"http": proxy_url, "https": proxy_url}
-                    )
-
-            # Create opener with proxy if needed
-            if proxy_handler:
-                opener = urllib.request.build_opener(proxy_handler)
-                urllib.request.install_opener(opener)
+            # Proxy support removed - direct download
 
             # Download file with redirect handling
             with urllib.request.urlopen(url) as response:
@@ -246,36 +230,7 @@ class LocalAPIServer:
                 "2",  # Info level logging
             ]
 
-            # Add proxy settings if configured
-            proxy_settings = get_proxy_settings()
-            if proxy_settings:
-                proxy_url = proxy_settings.get("https") or proxy_settings.get("http")
-                if proxy_url:
-                    logger.info(
-                        f"Adding proxy to telegram-bot-api: {proxy_url[:20]}..."
-                    )
-                    # telegram-bot-api supports proxy in format http://host:port
-                    # Authentication is handled via environment variables
-                    try:
-                        from urllib.parse import urlparse
-
-                        parsed = urlparse(proxy_url)
-                        if parsed.hostname and parsed.port:
-                            # telegram-bot-api expects proxy in format http://host:port
-                            proxy_for_api = f"http://{parsed.hostname}:{parsed.port}"
-                            cmd.extend(["--proxy", proxy_for_api])
-                            
-                            logger.info(f"Using proxy: {parsed.hostname}:{parsed.port}")
-                            
-                            # Store auth info for environment variables
-                            if parsed.username and parsed.password:
-                                logger.info("Proxy authentication will be set via environment variables")
-                        else:
-                            logger.warning(f"Could not parse proxy URL: {proxy_url}")
-                    except Exception as e:
-                        logger.error(f"Error parsing proxy URL: {e}")
-                        # Fallback: try to use the URL as-is
-                        cmd.extend(["--proxy", proxy_url])
+            # Proxy support removed - no proxy configuration
 
             logger.info(f"Starting local Telegram Bot API server on port {self.port}")
             logger.info("Server logs will be displayed in the console below:")
@@ -284,30 +239,8 @@ class LocalAPIServer:
             logger.info(f"Running command: {' '.join(cmd)}")
             logger.info(f"Working directory: {self.bin_dir}")
 
-            # Prepare environment with proxy settings
+            # Use default environment without proxy settings
             env = os.environ.copy()
-            if proxy_settings:
-                proxy_url = proxy_settings.get("https") or proxy_settings.get("http")
-                if proxy_url:
-                    try:
-                        from urllib.parse import urlparse
-                        parsed = urlparse(proxy_url)
-                        
-                        # Set proxy environment variables for telegram-bot-api
-                        env["HTTP_PROXY"] = proxy_url
-                        env["HTTPS_PROXY"] = proxy_url
-                        env["http_proxy"] = proxy_url
-                        env["https_proxy"] = proxy_url
-                        
-                        # Set proxy authentication if provided
-                        if parsed.username and parsed.password:
-                            env["PROXY_USER"] = parsed.username
-                            env["PROXY_PASSWORD"] = parsed.password
-                            logger.info("Set proxy authentication environment variables")
-                        
-                        logger.info("Set proxy environment variables for telegram-bot-api")
-                    except Exception as e:
-                        logger.error(f"Error setting proxy environment variables: {e}")
 
             # For Windows, run from bin directory to find DLL dependencies
             # Don't capture stdout/stderr to allow server logs to show in console

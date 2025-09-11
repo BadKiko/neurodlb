@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import yt_dlp
 
-from config import TEMP_DIR, MAX_VIDEO_DURATION, MAX_FILE_SIZE_MB, get_proxy_settings
+from config import TEMP_DIR, MAX_VIDEO_DURATION, MAX_FILE_SIZE_MB
 from video_source_handler import VideoSourceHandler
 
 logger = logging.getLogger(__name__)
@@ -130,13 +130,7 @@ class VideoProcessor:
             },
         }
 
-        # Add proxy settings if configured
-        proxy_settings = get_proxy_settings()
-        if proxy_settings:
-            proxy_url = proxy_settings.get("https") or proxy_settings.get("http")
-            if proxy_url:
-                logger.info(f"Using proxy for yt-dlp: {proxy_url[:20]}...")
-                options["proxy"] = proxy_url
+        # Proxy support removed - no proxy configuration
 
         return options
 
@@ -779,16 +773,8 @@ class VideoProcessor:
                 return None
 
             def extract_info():
-                # Get proxy settings for info extraction
-                proxy_settings = get_proxy_settings()
+                # Proxy support removed - no proxy configuration
                 options = {"quiet": True}
-                if proxy_settings:
-                    proxy_url = proxy_settings.get("https") or proxy_settings.get(
-                        "http"
-                    )
-                    if proxy_url:
-                        options["proxy"] = proxy_url
-
                 with yt_dlp.YoutubeDL(options) as ydl:
                     return ydl.extract_info(url, download=False)
 
