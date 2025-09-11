@@ -955,9 +955,42 @@ async def run_bot() -> None:
     if TELEGRAM_BOT_API_URL:
         logger.info(f"Using local Telegram Bot API server: {TELEGRAM_BOT_API_URL}")
         # Create custom session with local API server and proxy
-        session = AiohttpSession(
-            api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL), proxy=proxy_url
-        )
+        if proxy_url:
+            # Parse proxy URL for aiohttp
+            try:
+                from urllib.parse import urlparse
+
+                parsed = urlparse(proxy_url)
+                if parsed.username and parsed.password:
+                    # For authenticated proxy, we need to use aiohttp_socks.ProxyConnector
+                    from aiohttp_socks import ProxyConnector
+                    connector = ProxyConnector.from_url(proxy_url)
+                    aiohttp_session = aiohttp.ClientSession(connector=connector)
+                    # Use aiohttp session directly in Bot constructor
+                    bot = Bot(
+                        token=TELEGRAM_BOT_TOKEN,
+                        session=aiohttp_session,
+                        api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL),
+                        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+                    )
+                    logger.info("✅ Local Bot API enabled - file size limit increased to 2GB!")
+                    return bot
+                else:
+                    session = AiohttpSession(
+                        api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL),
+                        proxy=proxy_url,
+                    )
+            except Exception as e:
+                logger.warning(f"Error setting up proxy for local API: {e}")
+                session = AiohttpSession(
+                    api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL),
+                    proxy=proxy_url,
+                )
+        else:
+            session = AiohttpSession(
+                api=TelegramAPIServer.from_base(TELEGRAM_BOT_API_URL)
+            )
+        
         bot = Bot(
             token=TELEGRAM_BOT_TOKEN,
             session=session,
@@ -966,7 +999,32 @@ async def run_bot() -> None:
         logger.info("✅ Local Bot API enabled - file size limit increased to 2GB!")
     else:
         # Create session with proxy for standard API
-        session = AiohttpSession(proxy=proxy_url) if proxy_url else None
+        if proxy_url:
+            # Parse proxy URL for aiohttp
+            try:
+                from urllib.parse import urlparse
+
+                parsed = urlparse(proxy_url)
+                if parsed.username and parsed.password:
+                    # For authenticated proxy, we need to use aiohttp_socks.ProxyConnector
+                    from aiohttp_socks import ProxyConnector
+                    connector = ProxyConnector.from_url(proxy_url)
+                    aiohttp_session = aiohttp.ClientSession(connector=connector)
+                    # Use aiohttp session directly in Bot constructor
+                    bot = Bot(
+                        token=TELEGRAM_BOT_TOKEN,
+                        session=aiohttp_session,
+                        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+                    )
+                    return bot
+                else:
+                    session = AiohttpSession(proxy=proxy_url)
+            except Exception as e:
+                logger.warning(f"Error setting up proxy for aiogram: {e}")
+                session = AiohttpSession(proxy=proxy_url)
+        else:
+            session = None
+
         bot = Bot(
             token=TELEGRAM_BOT_TOKEN,
             session=session,
